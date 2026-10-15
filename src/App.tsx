@@ -28,6 +28,7 @@ export function App() {
     currentUser,
     isManager,
     isRevoked,
+    isAuthenticated,
     loginWithCredentials,
     members,
     invitations,
@@ -627,10 +628,11 @@ export function App() {
 
       {/* Sign In Modal (Authenticates against backend credentials/invitations) */}
       <SignInModal
-        isOpen={isSignInModalOpen}
-        onClose={() => setIsSignInModalOpen(false)}
+        isOpen={!isAuthenticated || isSignInModalOpen}
+        onClose={isAuthenticated ? () => setIsSignInModalOpen(false) : undefined}
         onLoginWithCredentials={loginWithCredentials}
         onNotify={addToast}
+        isMandatory={!isAuthenticated}
       />
 
       {/* Toast Notification Container */}

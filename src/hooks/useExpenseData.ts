@@ -22,6 +22,7 @@ export function useExpenseData() {
   const userRole = currentUser.role;
   const isManager = currentUser.role === 'manager';
   const isRevoked = currentUser.status === 'revoked';
+  const isAuthenticated = backend.isAuthenticated();
 
   // Core financial state directly backed by backend
   const [expenses, setExpenses] = useState<Expense[]>(() => {
@@ -469,6 +470,7 @@ export function useExpenseData() {
     userRole,
     isManager,
     isRevoked,
+    isAuthenticated,
     switchUser,
     loginWithCredentials,
     logout,

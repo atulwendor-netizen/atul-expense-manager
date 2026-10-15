@@ -48,6 +48,17 @@ export const INITIAL_MANAGER: UserProfile = {
   lastLoginAt: '2026-10-14T17:30:00Z',
 };
 
+// Safe unauthenticated guest session - strictly non-owner, never privileged
+export const GUEST_USER: UserProfile = {
+  id: 'usr-guest',
+  name: 'Workspace Guest',
+  email: '',
+  role: 'manager', // Strictly manager, never owner
+  status: 'disabled',
+  workspaceId: DEFAULT_WORKSPACE.id,
+  createdAt: '2026-08-01T00:00:00Z',
+};
+
 const STORAGE_KEYS = {
   CURRENT_USER: 'atul_cloud_current_user_v1',
   EXPENSES: 'atul_cloud_expenses_v1',
@@ -62,7 +73,7 @@ const STORAGE_KEYS = {
 };
 
 class BackendService {
-  private currentUser: UserProfile = INITIAL_OWNER;
+  private currentUser: UserProfile = GUEST_USER;
 
   constructor() {
     this.initSession();
@@ -89,6 +100,16 @@ class BackendService {
     }
   }
 
+  private removeItem(key: string): void {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem(key);
+      }
+    } catch {
+      // fallback
+    }
+  }
+
   private initSession(): void {
     const saved = this.getItem(STORAGE_KEYS.CURRENT_USER);
     if (saved) {
@@ -97,19 +118,54 @@ class BackendService {
         if (parsed.role === 'owner' && (parsed.name === 'Basant' || parsed.id === 'usr-owner-basant')) {
           this.currentUser = INITIAL_OWNER;
           this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(INITIAL_OWNER));
+        } else if (parsed && parsed.email) {
+          const cleanEmail = parsed.email.trim().toLowerCase();
+          if (cleanEmail === INITIAL_OWNER.email.toLowerCase() || cleanEmail === 'atul') {
+            this.currentUser = INITIAL_OWNER;
+            this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(INITIAL_OWNER));
+          } else {
+            // Verify member record so role (manager) and status (active/revoked) are strictly preserved across refreshes
+            const members = this.getWorkspaceMembers();
+            const member = members.find((m) => m.email.toLowerCase() === cleanEmail);
+            if (member) {
+              const validatedUser: UserProfile = {
+                id: member.userId,
+                name: member.name,
+                email: member.email,
+                role: member.role, // strictly keeps 'manager' if member is manager
+                status: member.status,
+                workspaceId: member.workspaceId,
+                createdAt: member.joinedAt,
+                lastLoginAt: parsed.lastLoginAt || new Date().toISOString(),
+              };
+              this.currentUser = validatedUser;
+              this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(validatedUser));
+            } else {
+              this.currentUser = parsed;
+            }
+          }
         } else {
-          this.currentUser = parsed;
+          this.currentUser = GUEST_USER;
         }
       } catch {
-        this.currentUser = INITIAL_OWNER;
+        this.currentUser = GUEST_USER;
       }
     } else {
-      this.currentUser = INITIAL_OWNER;
-      this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(INITIAL_OWNER));
+      // No saved session: unauthenticated guest, NEVER default to Owner
+      this.currentUser = GUEST_USER;
     }
   }
 
   // --- CURRENT USER & AUTHENTICATION ---
+  isAuthenticated(): boolean {
+    return Boolean(
+      this.currentUser &&
+      this.currentUser.email &&
+      this.currentUser.id !== 'usr-guest' &&
+      this.currentUser.status !== 'disabled'
+    );
+  }
+
   getCurrentUser(): UserProfile {
     return this.currentUser;
   }
@@ -269,9 +325,8 @@ class BackendService {
   }
 
   logout(): void {
-    // Default to owner preview on logout
-    this.currentUser = INITIAL_OWNER;
-    this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(INITIAL_OWNER));
+    this.currentUser = GUEST_USER;
+    this.removeItem(STORAGE_KEYS.CURRENT_USER);
   }
 
   // Helper to obtain master portal access link
