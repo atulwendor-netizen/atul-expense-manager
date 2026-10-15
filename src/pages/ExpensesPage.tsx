@@ -1,0 +1,362 @@
+import React, { useState, useMemo } from 'react';
+import { Expense, Trip } from '../types/index';
+import { FilterBar, FilterState } from '../components/FilterBar';
+import { ExpenseTable } from '../components/ExpenseTable';
+import { ExpenseDetailsModal } from '../components/ExpenseDetailsModal';
+import { ConfirmationModal } from '../components/ConfirmationModal';
+import { SummaryCard } from '../components/SummaryCard';
+import { exportExpensesToCSV, exportExpensesToExcel } from '../utils/export';
+import { formatCurrency } from '../utils/calculations';
+import {
+  Wallet,
+  CheckCircle2,
+  AlertTriangle,
+  TrendingDown,
+  Download,
+  Plus,
+  FileSpreadsheet,
+  FileText,
+  ChevronDown,
+} from 'lucide-react';
+
+interface ExpensesPageProps {
+  expenses: Expense[];
+  trips: Trip[];
+  onAddExpense: () => void;
+  onEditExpense: (expense: Expense) => void;
+  onDeleteExpense: (id: string) => void;
+  onBulkDeleteExpenses: (ids: string[]) => void;
+  onDiscussExpense?: (expense: Expense) => void;
+  onNotify: (type: 'success' | 'warning' | 'info' | 'error', text: string) => void;
+  isManager?: boolean;
+}
+
+const initialFilterState: FilterState = {
+  search: '',
+  startDate: '',
+  endDate: '',
+  category: 'all',
+  paymentMethod: 'all',
+  location: 'all',
+  tripId: 'all',
+  status: 'all',
+};
+
+export const ExpensesPage: React.FC<ExpensesPageProps> = ({
+  expenses,
+  trips,
+  onAddExpense,
+  onEditExpense,
+  onDeleteExpense,
+  onBulkDeleteExpenses,
+  onDiscussExpense,
+  onNotify,
+  isManager = false,
+}) => {
+  const [filters, setFilters] = useState<FilterState>(initialFilterState);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+
+  // Modals state
+  const [selectedExpenseForDetails, setSelectedExpenseForDetails] = useState<Expense | null>(null);
+  const [expenseIdToDelete, setExpenseIdToDelete] = useState<string | null>(null);
+  const [bulkIdsToDelete, setBulkIdsToDelete] = useState<string[] | null>(null);
+
+  // Extract unique filter options from data
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    expenses.forEach((e) => {
+      if (e.category) set.add(e.category);
+    });
+    return Array.from(set).sort();
+  }, [expenses]);
+
+  const locations = useMemo(() => {
+    const set = new Set<string>();
+    expenses.forEach((e) => {
+      if (e.location && e.location.trim()) set.add(e.location);
+    });
+    return Array.from(set).sort();
+  }, [expenses]);
+
+  const paymentMethods = useMemo(() => {
+    const set = new Set<string>();
+    expenses.forEach((e) => {
+      if (e.paymentMethod && e.paymentMethod.trim()) set.add(e.paymentMethod);
+    });
+    return Array.from(set).sort();
+  }, [expenses]);
+
+  // Handle single filter change
+  const handleFilterChange = <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleClearFilters = () => {
+    setFilters(initialFilterState);
+  };
+
+  // MULTI-FILTERING LOGIC (AND logic)
+  const filteredExpenses = useMemo(() => {
+    return expenses.filter((e) => {
+      // 1. Search Query
+      if (filters.search.trim()) {
+        const q = filters.search.toLowerCase();
+        const matchDesc = e.description?.toLowerCase().includes(q);
+        const matchCat = e.category?.toLowerCase().includes(q);
+        const matchLoc = e.location?.toLowerCase().includes(q);
+        const matchNotes = e.notes?.toLowerCase().includes(q);
+        const matchPay = e.paymentMethod?.toLowerCase().includes(q);
+        const matchAmt = e.amount !== null ? String(e.amount).includes(q) : false;
+        if (!matchDesc && !matchCat && !matchLoc && !matchNotes && !matchPay && !matchAmt) {
+          return false;
+        }
+      }
+
+      // 2. Category
+      if (filters.category !== 'all' && e.category !== filters.category) {
+        return false;
+      }
+
+      // 3. Location
+      if (filters.location !== 'all' && e.location !== filters.location) {
+        return false;
+      }
+
+      // 4. Payment Method
+      if (filters.paymentMethod !== 'all' && e.paymentMethod !== filters.paymentMethod) {
+        return false;
+      }
+
+      // 5. Trip
+      if (filters.tripId !== 'all' && e.tripId !== filters.tripId) {
+        return false;
+      }
+
+      // 6. Status
+      if (filters.status !== 'all') {
+        if (filters.status === 'valid' && (e.status !== 'valid' || e.amount === null)) {
+          return false;
+        }
+        if (filters.status === 'incomplete' && e.status !== 'incomplete' && e.amount !== null) {
+          return false;
+        }
+      }
+
+      // 7. Date Range
+      if (filters.startDate && e.date && e.date < filters.startDate) {
+        return false;
+      }
+      if (filters.endDate && e.date && e.date > filters.endDate) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [expenses, filters]);
+
+  // Page dynamic metrics from CURRENT filtered set
+  const pageMetrics = useMemo(() => {
+    const valid = filteredExpenses.filter((e) => e.status === 'valid' && typeof e.amount === 'number');
+    const incomplete = filteredExpenses.filter((e) => e.status === 'incomplete' || e.amount === null);
+    const totalAmount = valid.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const avgExpense = valid.length > 0 ? Math.round(totalAmount / valid.length) : 0;
+
+    return {
+      totalAmount,
+      validCount: valid.length,
+      incompleteCount: incomplete.length,
+      avgExpense,
+    };
+  }, [filteredExpenses]);
+
+  // Export handlers
+  const handleExportCSV = () => {
+    exportExpensesToCSV(filteredExpenses, trips);
+    onNotify('success', `Exported ${filteredExpenses.length} expenses to CSV`);
+    setIsExportMenuOpen(false);
+  };
+
+  const handleExportExcel = () => {
+    exportExpensesToExcel(filteredExpenses, trips);
+    onNotify('success', `Exported ${filteredExpenses.length} expenses to Excel (.xlsx)`);
+    setIsExportMenuOpen(false);
+  };
+
+  // Confirm Single Delete
+  const handleConfirmSingleDelete = () => {
+    if (expenseIdToDelete) {
+      onDeleteExpense(expenseIdToDelete);
+      onNotify('success', 'Expense record deleted successfully');
+      setExpenseIdToDelete(null);
+    }
+  };
+
+  // Confirm Bulk Delete
+  const handleConfirmBulkDelete = () => {
+    if (bulkIdsToDelete && bulkIdsToDelete.length > 0) {
+      onBulkDeleteExpenses(bulkIdsToDelete);
+      onNotify('success', `Deleted ${bulkIdsToDelete.length} selected expense records`);
+      setBulkIdsToDelete(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+            Expenses
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Track, filter, and manage all personal and work-related expenses
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          {/* Export Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
+            >
+              <Download className="h-4 w-4" />
+              Export
+              <ChevronDown className="h-3.5 w-3.5 ml-0.5 text-slate-400" />
+            </button>
+
+            {isExportMenuOpen && (
+              <div
+                onClick={() => setIsExportMenuOpen(false)}
+                className="absolute right-0 mt-1.5 w-48 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl dark:border-slate-800 dark:bg-slate-900 z-20 animate-in fade-in zoom-in-95 duration-100"
+              >
+                <button
+                  onClick={handleExportCSV}
+                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 text-left"
+                >
+                  <FileText className="h-4 w-4 text-emerald-600" />
+                  <span>Export as CSV</span>
+                </button>
+                <button
+                  onClick={handleExportExcel}
+                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 text-left"
+                >
+                  <FileSpreadsheet className="h-4 w-4 text-blue-600" />
+                  <span>Export as Excel (.xlsx)</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Add Expense Primary Button (Owner only) */}
+          {!isManager && (
+            <button
+              onClick={onAddExpense}
+              className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-blue-500/20 hover:bg-blue-700 transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Add Expense</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Dynamic Summary Cards for Filtered Set */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <SummaryCard
+          title="Total Expenses"
+          value={formatCurrency(pageMetrics.totalAmount)}
+          subtitle="Sum of valid records"
+          icon={Wallet}
+          accentColor="brand"
+        />
+        <SummaryCard
+          title="Valid Transactions"
+          value={pageMetrics.validCount}
+          subtitle="Fully logged records"
+          icon={CheckCircle2}
+          accentColor="emerald"
+        />
+        <SummaryCard
+          title="Incomplete Records"
+          value={pageMetrics.incompleteCount}
+          subtitle={pageMetrics.incompleteCount > 0 ? "Requires amount" : "All records complete"}
+          icon={AlertTriangle}
+          accentColor="amber"
+          badge={
+            pageMetrics.incompleteCount > 0
+              ? { text: 'Attention', variant: 'warning' }
+              : { text: 'Clean', variant: 'success' }
+          }
+        />
+        <SummaryCard
+          title="Average Expense"
+          value={formatCurrency(pageMetrics.avgExpense)}
+          subtitle="Per item average"
+          icon={TrendingDown}
+          accentColor="violet"
+        />
+      </div>
+
+      {/* Filter Toolbar */}
+      <FilterBar
+        filters={filters}
+        onFilterChange={handleFilterChange}
+        onClearFilters={handleClearFilters}
+        categories={categories}
+        locations={locations}
+        paymentMethods={paymentMethods}
+        trips={trips}
+        filteredCount={filteredExpenses.length}
+        totalCount={expenses.length}
+      />
+
+      {/* Expense Table with desktop & mobile layouts */}
+      <ExpenseTable
+        expenses={filteredExpenses}
+        trips={trips}
+        onViewExpense={(expense) => setSelectedExpenseForDetails(expense)}
+        onEditExpense={(expense) => onEditExpense(expense)}
+        onDeleteExpense={(id) => setExpenseIdToDelete(id)}
+        onBulkDelete={(ids) => setBulkIdsToDelete(ids)}
+        onClearFilters={handleClearFilters}
+        onDiscussExpense={onDiscussExpense}
+        isManager={isManager}
+      />
+
+      {/* Expense Details View Modal */}
+      <ExpenseDetailsModal
+        isOpen={Boolean(selectedExpenseForDetails)}
+        onClose={() => setSelectedExpenseForDetails(null)}
+        expense={selectedExpenseForDetails}
+        trips={trips}
+        onEdit={(expense) => onEditExpense(expense)}
+        onDelete={(id) => setExpenseIdToDelete(id)}
+        onDiscuss={onDiscussExpense}
+        isManager={isManager}
+      />
+
+      {/* Confirm Single Delete Modal */}
+      <ConfirmationModal
+        isOpen={Boolean(expenseIdToDelete)}
+        title="Delete Expense Record?"
+        message="Are you sure you want to delete this expense record? This action will permanently remove it and recalculate all financial dashboard totals."
+        confirmLabel="Yes, Delete Expense"
+        variant="danger"
+        onConfirm={handleConfirmSingleDelete}
+        onCancel={() => setExpenseIdToDelete(null)}
+      />
+
+      {/* Confirm Bulk Delete Modal */}
+      <ConfirmationModal
+        isOpen={Boolean(bulkIdsToDelete && bulkIdsToDelete.length > 0)}
+        title={`Delete ${bulkIdsToDelete?.length || 0} Selected Expenses?`}
+        message={`Are you sure you want to permanently delete these ${bulkIdsToDelete?.length || 0} selected expense records? This action cannot be undone.`}
+        confirmLabel={`Delete ${bulkIdsToDelete?.length || 0} Expenses`}
+        variant="danger"
+        onConfirm={handleConfirmBulkDelete}
+        onCancel={() => setBulkIdsToDelete(null)}
+      />
+    </div>
+  );
+};

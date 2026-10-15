@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Atul Expense Manager</title>
+    <script>
+      // Single Page Application redirect script for static hosts (e.g., GitHub Pages)
+      var pathSegments = window.location.pathname.split('/').filter(Boolean);
+      var currentPath = window.location.pathname;
+      var currentSearch = window.location.search;
+      var currentHash = window.location.hash;
+      // Redirect to index.html with preserved hash/path
+      var redirectUrl = '/' + (currentPath.replace(/^\//, '') ? '#' + currentPath.replace(/^\//, '') : '') + currentSearch + currentHash;
+      window.location.replace(redirectUrl);
+    </script>
+  </head>
+  <body>
+    <p>Redirecting to Atul Expense Manager...</p>
+  </body>
+</html>

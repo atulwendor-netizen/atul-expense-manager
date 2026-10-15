@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased text-slate-800 bg-slate-50 dark:bg-slate-950 dark:text-slate-100;
+  }
+}
+
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Hide navigation, header, buttons, toasts, and controls during print */
+  aside,
+  header,
+  .no-print,
+  button,
+  .fixed {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .print-page-break {
+    page-break-before: always;
+  }
+}
