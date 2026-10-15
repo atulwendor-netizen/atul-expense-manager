@@ -17,6 +17,9 @@ import {
   Cloud,
   Key,
   Lock,
+  Copy,
+  Check,
+  Share2,
 } from 'lucide-react';
 import { saveSupabaseConfig, clearSupabaseConfig, isSupabaseConfigured } from '../services/supabase';
 
@@ -53,6 +56,8 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<UserRole>('manager');
   const [selectedUserForDetails, setSelectedUserForDetails] = useState<WorkspaceMember | null>(null);
+  const [createdInviteModal, setCreatedInviteModal] = useState<{ email: string; role: UserRole; link: string; mailto: string } | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Cloud configuration state
   const [supabaseUrl, setSupabaseUrl] = useState(() => {
@@ -68,17 +73,49 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
     return '';
   });
 
+  const getInviteLink = (email: string, role: UserRole) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://atul-expense-manager.vercel.app';
+    return `${origin}/?role=${role}&email=${encodeURIComponent(email)}`;
+  };
+
+  const getMailtoLink = (email: string, role: UserRole) => {
+    const link = getInviteLink(email, role);
+    const subject = encodeURIComponent('Invitation to Atul Expense Manager as Manager / Auditor');
+    const body = encodeURIComponent(
+      `Hello,\n\nYou have been invited by Atul to access the Atul Expense Manager workspace as a Manager / Auditor (Read-Only Audit Mode).\n\nClick the link below to open your workspace directly:\n${link}\n\nBest regards,\nAtul`
+    );
+    return `mailto:${email}?subject=${subject}&body=${body}`;
+  };
+
+  const handleCopyLink = (id: string, link: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(link);
+    }
+    setCopiedId(id);
+    onNotify('success', 'Invitation link copied to clipboard!');
+    setTimeout(() => setCopiedId(null), 2500);
+  };
+
   const handleSendInvite = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteEmail.trim() || !inviteEmail.includes('@')) {
+    const cleanEmail = inviteEmail.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
       onNotify('error', 'Please enter a valid email address');
       return;
     }
     try {
-      onInviteManager(inviteEmail.trim(), inviteRole);
-      onNotify('success', `Sent invitation to ${inviteEmail} as ${inviteRole.toUpperCase()}`);
+      onInviteManager(cleanEmail, inviteRole);
+      const link = getInviteLink(cleanEmail, inviteRole);
+      const mailto = getMailtoLink(cleanEmail, inviteRole);
+      setCreatedInviteModal({
+        email: cleanEmail,
+        role: inviteRole,
+        link,
+        mailto,
+      });
       setInviteEmail('');
       setIsInviteModalOpen(false);
+      onNotify('success', `Invitation created for ${cleanEmail}! You can now share the access link.`);
     } catch (err: any) {
       onNotify('error', err.message || 'Failed to send invitation');
     }
@@ -302,23 +339,48 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
             Invitations ({invitations.length})
           </h3>
           <div className="space-y-2">
-            {invitations.map((inv) => (
-              <div
-                key={inv.id}
-                className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 text-xs"
-              >
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-blue-500" />
-                  <span className="font-semibold text-slate-900 dark:text-white">{inv.email}</span>
-                  <span className="rounded bg-blue-100 text-blue-700 px-1.5 py-0.2 text-[10px] font-bold uppercase dark:bg-blue-950 dark:text-blue-300">
-                    {inv.role}
-                  </span>
+            {invitations.map((inv) => {
+              const link = getInviteLink(inv.email, inv.role);
+              const mailto = getMailtoLink(inv.email, inv.role);
+              const isCopied = copiedId === inv.id;
+
+              return (
+                <div
+                  key={inv.id}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 text-xs gap-3"
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <Mail className="h-4 w-4 text-blue-500 shrink-0" />
+                    <span className="font-semibold text-slate-900 dark:text-white truncate">{inv.email}</span>
+                    <span className="rounded bg-blue-100 text-blue-700 px-1.5 py-0.2 text-[10px] font-bold uppercase dark:bg-blue-950 dark:text-blue-300 shrink-0">
+                      {inv.role}
+                    </span>
+                    <span className="text-[11px] font-medium text-slate-500 capitalize shrink-0">
+                      • {inv.status}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleCopyLink(inv.id, link)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                    >
+                      {isCopied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5 text-slate-400" />}
+                      <span>{isCopied ? 'Copied' : 'Copy Link'}</span>
+                    </button>
+
+                    <a
+                      href={mailto}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/60 dark:text-blue-300"
+                    >
+                      <Share2 className="h-3.5 w-3.5" />
+                      <span>Send Email</span>
+                    </a>
+                  </div>
                 </div>
-                <span className="text-[11px] font-medium text-slate-500 capitalize">
-                  Status: {inv.status}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -518,6 +580,71 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                 className="rounded-xl bg-slate-900 px-4 py-1.5 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invitation Created & Share Modal */}
+      {createdInviteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400">
+                <CheckCircle2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Invitation Created Successfully!
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Role: {createdInviteModal.role.toUpperCase()} • {createdInviteModal.email}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              The invitation record is registered. You can copy the direct access link below and send it to the user via WhatsApp, Email, or Slack:
+            </p>
+
+            <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                Direct Workspace Access Link
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={createdInviteModal.link}
+                  className="w-full bg-transparent text-xs text-slate-700 dark:text-slate-200 select-all outline-none font-mono truncate"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleCopyLink('modal', createdInviteModal.link)}
+                  className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                >
+                  {copiedId === 'modal' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  <span>{copiedId === 'modal' ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <a
+                href={createdInviteModal.mailto}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/60 dark:text-blue-300"
+              >
+                <Share2 className="h-3.5 w-3.5" />
+                <span>Open in Email / Gmail</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={() => setCreatedInviteModal(null)}
+                className="w-full sm:w-auto rounded-xl bg-slate-900 px-5 py-2 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900"
+              >
+                Done
               </button>
             </div>
           </div>

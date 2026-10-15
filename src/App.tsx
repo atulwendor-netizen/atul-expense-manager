@@ -1,5 +1,6 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useExpenseData } from './hooks/useExpenseData';
+import { backendService } from './services/backendService';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { DashboardPage } from './pages/DashboardPage';
@@ -95,6 +96,30 @@ export function App() {
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  // Handle direct invitation link parameters (?role=manager&email=...)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const inviteEmail = params.get('email');
+      const roleParam = params.get('role');
+
+      if (inviteEmail || roleParam === 'manager') {
+        const cleanEmail = (inviteEmail || 'manager@email.com').trim().toLowerCase();
+        backendService.loginWithCredentials(cleanEmail);
+        switchUser('manager');
+        addToast(
+          'success',
+          `Welcome! Logged in as Manager / Auditor (${cleanEmail}) in Read-Only Audit Mode.`
+        );
+        // Clean URL parameters without reloading
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    } catch {
+      // Fallback
+    }
+  }, [switchUser, addToast]);
 
   // Global search filter for Dashboard
   const searchedExpenses = useMemo(() => {

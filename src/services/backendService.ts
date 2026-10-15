@@ -1302,3 +1302,4 @@ class BackendService {
 }
 
 export const backend = new BackendService();
+export const backendService = backend;
