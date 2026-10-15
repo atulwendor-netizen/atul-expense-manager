@@ -193,16 +193,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
 
             <div>
-              <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                Password
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                  Password
+                </label>
+                <span className="text-[10px] text-slate-400">
+                  Optional for invited members
+                </span>
+              </div>
               <input
                 type="password"
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="••••••••••••"
+                placeholder="Leave blank or enter any password"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Invited emails can log in directly without a password.
+              </p>
             </div>
 
             <button
