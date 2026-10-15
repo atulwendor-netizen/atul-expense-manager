@@ -49,10 +49,14 @@ export const SignInModal: React.FC<SignInModalProps> = ({
         );
         setEmailInput('');
         setPasswordInput('');
-        if (typeof window !== 'undefined' && window.location.pathname === '/login') {
-          window.history.replaceState({}, document.title, '/');
+        if (typeof window !== 'undefined') {
+          if (window.location.pathname === '/login' || window.location.search) {
+            window.history.replaceState({}, document.title, '/');
+          }
         }
-        if (onClose) onClose();
+        if (onClose) {
+          onClose();
+        }
       } else {
         setErrorMessage(
           res.error ||

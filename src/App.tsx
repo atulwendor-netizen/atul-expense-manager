@@ -373,7 +373,13 @@ export function App() {
         <SignInModal
           isOpen={isSignInModalOpen}
           onClose={() => setIsSignInModalOpen(false)}
-          onLoginWithCredentials={loginWithCredentials}
+          onLoginWithCredentials={(email, password) => {
+            const res = loginWithCredentials(email, password);
+            if (res.success) {
+              setIsSignInModalOpen(false);
+            }
+            return res;
+          }}
           onNotify={addToast}
         />
       </div>
@@ -631,8 +637,14 @@ export function App() {
       {/* Sign In Modal (Authenticates against backend credentials/invitations) */}
       <SignInModal
         isOpen={!isAuthenticated || isSignInModalOpen}
-        onClose={isAuthenticated ? () => setIsSignInModalOpen(false) : undefined}
-        onLoginWithCredentials={loginWithCredentials}
+        onClose={() => setIsSignInModalOpen(false)}
+        onLoginWithCredentials={(email, password) => {
+          const res = loginWithCredentials(email, password);
+          if (res.success) {
+            setIsSignInModalOpen(false);
+          }
+          return res;
+        }}
         onNotify={addToast}
         isMandatory={!isAuthenticated}
       />
