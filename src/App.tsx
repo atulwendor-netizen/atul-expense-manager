@@ -34,6 +34,7 @@ export function App() {
     invitations,
     inviteManager,
     revokeUserAccess,
+    reactivateUserAccess,
     changeUserRole,
     auditLogs,
     migrateLocalDataToCloud,
@@ -539,6 +540,7 @@ export function App() {
               invitations={invitations}
               onInviteManager={inviteManager}
               onRevokeAccess={revokeUserAccess}
+              onReactivateUser={reactivateUserAccess}
               onChangeUserRole={changeUserRole}
               onMigrateToCloud={migrateLocalDataToCloud}
             />

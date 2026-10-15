@@ -85,6 +85,7 @@ const mutationMethods = [
   'resetAllData',
   'inviteManager',
   'revokeUserAccess',
+  'reactivateUserAccess',
   'changeUserRole',
   'migrateLocalDataToCloud',
 ];

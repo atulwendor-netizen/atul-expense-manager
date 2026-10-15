@@ -363,6 +363,43 @@ class BackendService {
     });
   }
 
+  reactivateUserAccess(userId: string): void {
+    this.enforceOwnerPermission('Reactivate User Access');
+    const members = this.getWorkspaceMembers();
+    const target = members.find((m) => m.userId === userId || m.id === userId);
+    if (!target) throw new Error('User not found.');
+
+    const updated = members.map((m) => {
+      if (m.userId === userId || m.id === userId) {
+        return { ...m, status: 'active' as const };
+      }
+      return m;
+    });
+
+    this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
+
+    // Also restore any matching invitations
+    const invitations = this.getInvitations();
+    const updatedInv = invitations.map((i) =>
+      i.email.toLowerCase() === target.email.toLowerCase() ? { ...i, status: 'accepted' as const } : i
+    );
+    this.setItem(STORAGE_KEYS.INVITATIONS, JSON.stringify(updatedInv));
+
+    // If current session is this user, restore active status
+    if (this.currentUser.id === target.userId) {
+      this.currentUser = { ...this.currentUser, status: 'active' };
+      this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(this.currentUser));
+    }
+
+    this.recordAuditLog({
+      action: 'Reactivated User Access',
+      recordType: 'user',
+      recordId: target.userId,
+      previousValue: `Status: ${target.status}`,
+      newValue: 'Status: Active (Access restored)',
+    });
+  }
+
   changeUserRole(userId: string, newRole: UserRole): void {
     this.enforceOwnerPermission('Change User Role');
     const members = this.getWorkspaceMembers();
@@ -372,19 +409,31 @@ class BackendService {
 
     const updated = members.map((m) => {
       if (m.userId === userId || m.id === userId) {
-        return { ...m, role: newRole };
+        return { ...m, role: newRole, status: 'active' as const };
       }
       return m;
     });
 
     this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
 
+    // Also update any invitations
+    const invitations = this.getInvitations();
+    const updatedInv = invitations.map((i) =>
+      i.email.toLowerCase() === target.email.toLowerCase() ? { ...i, role: newRole, status: 'accepted' as const } : i
+    );
+    this.setItem(STORAGE_KEYS.INVITATIONS, JSON.stringify(updatedInv));
+
+    if (this.currentUser.id === target.userId) {
+      this.currentUser = { ...this.currentUser, role: newRole, status: 'active' };
+      this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(this.currentUser));
+    }
+
     this.recordAuditLog({
       action: 'Changed User Role',
       recordType: 'user',
       recordId: target.userId,
-      previousValue: `Role: ${target.role}`,
-      newValue: `Role: ${newRole}`,
+      previousValue: `Role: ${target.role} (${target.status})`,
+      newValue: `Role: ${newRole} (Active)`,
     });
   }
 

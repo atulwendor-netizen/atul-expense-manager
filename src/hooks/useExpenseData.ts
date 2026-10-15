@@ -290,6 +290,11 @@ export function useExpenseData() {
     refreshState();
   }, [refreshState]);
 
+  const reactivateUserAccess = useCallback((userId: string) => {
+    backend.reactivateUserAccess(userId);
+    refreshState();
+  }, [refreshState]);
+
   const changeUserRole = useCallback((userId: string, newRole: UserRole) => {
     backend.changeUserRole(userId, newRole);
     refreshState();
@@ -471,6 +476,7 @@ export function useExpenseData() {
     invitations,
     inviteManager,
     revokeUserAccess,
+    reactivateUserAccess,
     changeUserRole,
     auditLogs,
     migrateLocalDataToCloud,

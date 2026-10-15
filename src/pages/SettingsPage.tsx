@@ -38,6 +38,7 @@ interface SettingsPageProps {
   invitations: WorkspaceInvitation[];
   onInviteManager: (email: string, role: UserRole) => void;
   onRevokeAccess: (userId: string) => void;
+  onReactivateUser: (userId: string) => void;
   onChangeUserRole: (userId: string, newRole: UserRole) => void;
   onMigrateToCloud: () => {
     success: boolean;
@@ -63,6 +64,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   invitations,
   onInviteManager,
   onRevokeAccess,
+  onReactivateUser,
   onChangeUserRole,
   onMigrateToCloud,
 }) => {
@@ -201,6 +203,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         invitations={invitations}
         onInviteManager={onInviteManager}
         onRevokeAccess={onRevokeAccess}
+        onReactivateUser={onReactivateUser}
         onChangeUserRole={onChangeUserRole}
         onMigrateToCloud={onMigrateToCloud}
         onNotify={onNotify}

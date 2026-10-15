@@ -29,6 +29,7 @@ interface UserManagementSectionProps {
   invitations: WorkspaceInvitation[];
   onInviteManager: (email: string, role: UserRole) => void;
   onRevokeAccess: (userId: string) => void;
+  onReactivateUser: (userId: string) => void;
   onChangeUserRole: (userId: string, newRole: UserRole) => void;
   onMigrateToCloud: () => {
     success: boolean;
@@ -47,6 +48,7 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
   invitations,
   onInviteManager,
   onRevokeAccess,
+  onReactivateUser,
   onChangeUserRole,
   onMigrateToCloud,
   onNotify,
@@ -58,6 +60,42 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
   const [selectedUserForDetails, setSelectedUserForDetails] = useState<WorkspaceMember | null>(null);
   const [createdInviteModal, setCreatedInviteModal] = useState<{ email: string; role: UserRole; link: string; mailto: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleReactivate = (userId: string, name: string) => {
+    try {
+      onReactivateUser(userId);
+      onNotify('success', `Access successfully restored for ${name}. Account status is now Active.`);
+      if (selectedUserForDetails && (selectedUserForDetails.userId === userId || selectedUserForDetails.id === userId)) {
+        setSelectedUserForDetails({ ...selectedUserForDetails, status: 'active' });
+      }
+    } catch (err: any) {
+      onNotify('error', err.message || 'Failed to reactivate user');
+    }
+  };
+
+  const handleRevoke = (userId: string, name: string) => {
+    try {
+      onRevokeAccess(userId);
+      onNotify('warning', `Access revoked for ${name}. Account session is locked.`);
+      if (selectedUserForDetails && (selectedUserForDetails.userId === userId || selectedUserForDetails.id === userId)) {
+        setSelectedUserForDetails({ ...selectedUserForDetails, status: 'revoked' });
+      }
+    } catch (err: any) {
+      onNotify('error', err.message || 'Failed to revoke access');
+    }
+  };
+
+  const handleChangeRole = (userId: string, newRole: UserRole, name: string) => {
+    try {
+      onChangeUserRole(userId, newRole);
+      onNotify('success', `Updated role for ${name} to ${newRole.toUpperCase()}.`);
+      if (selectedUserForDetails && (selectedUserForDetails.userId === userId || selectedUserForDetails.id === userId)) {
+        setSelectedUserForDetails({ ...selectedUserForDetails, role: newRole });
+      }
+    } catch (err: any) {
+      onNotify('error', err.message || 'Failed to change role');
+    }
+  };
 
   // Cloud configuration state
   const [supabaseUrl, setSupabaseUrl] = useState(() => {
@@ -307,8 +345,8 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
 
                         {!isMemberOwner && !isRevoked && (
                           <button
-                            onClick={() => onRevokeAccess(member.userId)}
-                            className="rounded-lg px-2 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                            onClick={() => handleRevoke(member.userId, member.name)}
+                            className="rounded-lg px-2 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40 transition-colors"
                           >
                             Revoke Access
                           </button>
@@ -316,8 +354,8 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
 
                         {!isMemberOwner && isRevoked && (
                           <button
-                            onClick={() => onChangeUserRole(member.userId, 'manager')}
-                            className="rounded-lg px-2 py-1 text-[11px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
+                            onClick={() => handleReactivate(member.userId, member.name)}
+                            className="rounded-lg px-2.5 py-1 text-[11px] font-bold text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40 transition-colors"
                           >
                             Reactivate
                           </button>
@@ -555,11 +593,26 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                   {selectedUserForDetails.email}
                 </span>
               </div>
-              <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800">
                 <span className="text-slate-400">Role:</span>
-                <span className="font-semibold capitalize text-slate-900 dark:text-white">
-                  {selectedUserForDetails.role}
-                </span>
+                {selectedUserForDetails.role === 'owner' ? (
+                  <span className="font-semibold text-slate-900 dark:text-white">Primary Owner</span>
+                ) : (
+                  <select
+                    value={selectedUserForDetails.role}
+                    onChange={(e) =>
+                      handleChangeRole(
+                        selectedUserForDetails.userId,
+                        e.target.value as UserRole,
+                        selectedUserForDetails.name
+                      )
+                    }
+                    className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 cursor-pointer"
+                  >
+                    <option value="manager">Manager / Auditor</option>
+                    <option value="owner">Co-Owner</option>
+                  </select>
+                )}
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
                 <span className="text-slate-400">Status:</span>
@@ -574,10 +627,27 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                 </span>
               </div>
             </div>
-            <div className="mt-4 flex justify-end">
+            <div className="mt-5 flex items-center justify-between gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+              {selectedUserForDetails.role !== 'owner' && (
+                selectedUserForDetails.status === 'revoked' ? (
+                  <button
+                    onClick={() => handleReactivate(selectedUserForDetails.userId, selectedUserForDetails.name)}
+                    className="rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors shadow-xs"
+                  >
+                    Reactivate Access
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleRevoke(selectedUserForDetails.userId, selectedUserForDetails.name)}
+                    className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 transition-colors"
+                  >
+                    Revoke Access
+                  </button>
+                )
+              )}
               <button
                 onClick={() => setSelectedUserForDetails(null)}
-                className="rounded-xl bg-slate-900 px-4 py-1.5 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900"
+                className="ml-auto rounded-xl bg-slate-900 px-4 py-1.5 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900"
               >
                 Close
               </button>
