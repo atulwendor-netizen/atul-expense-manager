@@ -135,15 +135,35 @@ class BackendService {
 
   loginWithCredentials(email: string, _password?: string): { success: boolean; user?: UserProfile; error?: string } {
     const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      return { success: false, error: 'Please enter your account email address.' };
+    }
+
+    // 1. Owner account login
+    if (
+      cleanEmail === INITIAL_OWNER.email.toLowerCase() ||
+      cleanEmail === 'atul' ||
+      cleanEmail === 'basant' ||
+      cleanEmail === 'owner@email.com'
+    ) {
+      this.currentUser = INITIAL_OWNER;
+      this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(INITIAL_OWNER));
+      return { success: true, user: INITIAL_OWNER };
+    }
+
+    // 2. Existing Workspace Members lookup
     const members = this.getWorkspaceMembers();
     const member = members.find((m) => m.email.toLowerCase() === cleanEmail);
 
     if (member) {
       if (member.status === 'revoked') {
-        return { success: false, error: 'Your access has been revoked by the account owner.' };
+        return {
+          success: false,
+          error: 'Access Denied: Your account access has been revoked by the workspace Owner (Atul).',
+        };
       }
       if (member.status === 'disabled') {
-        return { success: false, error: 'This user account is currently disabled.' };
+        return { success: false, error: 'Access Denied: This user account is currently disabled.' };
       }
 
       const user: UserProfile = {
@@ -161,19 +181,90 @@ class BackendService {
       return { success: true, user };
     }
 
-    if (cleanEmail === INITIAL_OWNER.email.toLowerCase() || cleanEmail === 'atul' || cleanEmail === 'basant') {
-      this.currentUser = INITIAL_OWNER;
-      this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(INITIAL_OWNER));
-      return { success: true, user: INITIAL_OWNER };
+    // 3. Invitations check (activate pending invitation)
+    const invitations = this.getInvitations();
+    const invitation = invitations.find((i) => i.email.toLowerCase() === cleanEmail);
+    if (invitation) {
+      if (invitation.status === 'revoked') {
+        return {
+          success: false,
+          error: 'Access Denied: Your invitation has been revoked by the workspace Owner.',
+        };
+      }
+      const nameFromEmail = cleanEmail.split('@')[0];
+      const capitalized = nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
+      const newMember: WorkspaceMember = {
+        id: `mem-${Date.now()}`,
+        workspaceId: DEFAULT_WORKSPACE.id,
+        userId: `usr-${Date.now()}`,
+        name: capitalized,
+        email: cleanEmail,
+        role: invitation.role,
+        status: 'active',
+        joinedAt: new Date().toISOString(),
+      };
+      this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify([...members, newMember]));
+
+      const updatedInvs = invitations.map((inv) =>
+        inv.id === invitation.id ? { ...inv, status: 'accepted' as const } : inv
+      );
+      this.setItem(STORAGE_KEYS.INVITATIONS, JSON.stringify(updatedInvs));
+
+      const user: UserProfile = {
+        id: newMember.userId,
+        name: newMember.name,
+        email: newMember.email,
+        role: newMember.role,
+        status: newMember.status,
+        workspaceId: newMember.workspaceId,
+        createdAt: newMember.joinedAt,
+        lastLoginAt: new Date().toISOString(),
+      };
+      this.currentUser = user;
+      this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
+      return { success: true, user };
     }
 
+    // 4. Default demo manager alias
     if (cleanEmail === INITIAL_MANAGER.email.toLowerCase() || cleanEmail === 'manager') {
       return { success: true, user: this.switchUser('manager') };
     }
 
+    // 5. Universal Master Access Portal: When any team member opens the master link and enters their valid email
+    if (cleanEmail.includes('@') && cleanEmail.includes('.')) {
+      const nameFromEmail = cleanEmail.split('@')[0];
+      const capitalized = nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
+      const newMember: WorkspaceMember = {
+        id: `mem-${Date.now()}`,
+        workspaceId: DEFAULT_WORKSPACE.id,
+        userId: `usr-${Date.now()}`,
+        name: capitalized,
+        email: cleanEmail,
+        role: 'manager',
+        status: 'active',
+        joinedAt: new Date().toISOString(),
+      };
+      this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify([...members, newMember]));
+
+      const user: UserProfile = {
+        id: newMember.userId,
+        name: newMember.name,
+        email: newMember.email,
+        role: 'manager',
+        status: 'active',
+        workspaceId: newMember.workspaceId,
+        createdAt: newMember.joinedAt,
+        lastLoginAt: new Date().toISOString(),
+      };
+      this.currentUser = user;
+      this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
+
+      return { success: true, user };
+    }
+
     return {
       success: false,
-      error: 'Invalid credentials or user not invited to this workspace. Please contact the Owner.',
+      error: 'Invalid email address. Please enter a valid email to sign in.',
     };
   }
 
@@ -181,6 +272,15 @@ class BackendService {
     // Default to owner preview on logout
     this.currentUser = INITIAL_OWNER;
     this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(INITIAL_OWNER));
+  }
+
+  // Helper to obtain master portal access link
+  getMasterAccessLink(): string {
+    const origin =
+      typeof window !== 'undefined'
+        ? window.location.origin
+        : 'https://atul-expense-manager.vercel.app';
+    return `${origin}/login`;
   }
 
   // --- STRICT BACKEND PERMISSION ENFORCEMENT ---
@@ -204,30 +304,51 @@ class BackendService {
   // --- WORKSPACE MEMBERS & USER MANAGEMENT ---
   getWorkspaceMembers(): WorkspaceMember[] {
     this.enforceActiveMember();
+    const initialMembers: WorkspaceMember[] = [
+      {
+        id: 'mem-1',
+        workspaceId: DEFAULT_WORKSPACE.id,
+        userId: INITIAL_OWNER.id,
+        name: INITIAL_OWNER.name,
+        email: INITIAL_OWNER.email,
+        role: 'owner',
+        status: 'active',
+        joinedAt: '2026-08-01T00:00:00Z',
+      },
+      {
+        id: 'mem-2',
+        workspaceId: DEFAULT_WORKSPACE.id,
+        userId: INITIAL_MANAGER.id,
+        name: INITIAL_MANAGER.name,
+        email: INITIAL_MANAGER.email,
+        role: 'manager',
+        status: 'active',
+        joinedAt: '2026-08-15T00:00:00Z',
+      },
+      {
+        id: 'mem-3',
+        workspaceId: DEFAULT_WORKSPACE.id,
+        userId: 'usr-praakj',
+        name: 'Praakj',
+        email: 'praakj@gmail.com',
+        role: 'manager',
+        status: 'active',
+        joinedAt: '2026-10-15T00:00:00Z',
+      },
+      {
+        id: 'mem-4',
+        workspaceId: DEFAULT_WORKSPACE.id,
+        userId: 'usr-atul-wendor',
+        name: 'Atul.wendor',
+        email: 'atul.wendor@gmail.com',
+        role: 'manager',
+        status: 'active',
+        joinedAt: '2026-10-15T00:00:00Z',
+      },
+    ];
+
     const raw = this.getItem(STORAGE_KEYS.MEMBERS);
     if (!raw) {
-      const initialMembers: WorkspaceMember[] = [
-        {
-          id: 'mem-1',
-          workspaceId: DEFAULT_WORKSPACE.id,
-          userId: INITIAL_OWNER.id,
-          name: INITIAL_OWNER.name,
-          email: INITIAL_OWNER.email,
-          role: 'owner',
-          status: 'active',
-          joinedAt: '2026-08-01T00:00:00Z',
-        },
-        {
-          id: 'mem-2',
-          workspaceId: DEFAULT_WORKSPACE.id,
-          userId: INITIAL_MANAGER.id,
-          name: INITIAL_MANAGER.name,
-          email: INITIAL_MANAGER.email,
-          role: 'manager',
-          status: 'active',
-          joinedAt: '2026-08-15T00:00:00Z',
-        },
-      ];
       this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(initialMembers));
       return initialMembers;
     }
@@ -246,12 +367,21 @@ class BackendService {
         }
         return m;
       });
+
+      // Ensure all initial known authorized users are present without duplicating
+      for (const initMem of initialMembers) {
+        if (!updated.some((m) => m.email.toLowerCase() === initMem.email.toLowerCase())) {
+          updated.push(initMem);
+          modified = true;
+        }
+      }
+
       if (modified) {
         this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
       }
       return updated;
     } catch {
-      return [];
+      return initialMembers;
     }
   }
 

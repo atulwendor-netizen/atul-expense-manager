@@ -28,7 +28,6 @@ export function App() {
     currentUser,
     isManager,
     isRevoked,
-    switchUser,
     loginWithCredentials,
     members,
     invitations,
@@ -123,29 +122,52 @@ export function App() {
     setIsSignInModalOpen(true);
   }, []);
 
-  // Handle direct invitation link parameters (?role=manager&email=...)
+  // Handle Universal Master Link (/login, /portal, /access, ?portal=..., ?login=...) and direct invitation link parameters
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
+      const path = window.location.pathname.toLowerCase();
       const params = new URLSearchParams(window.location.search);
       const inviteEmail = params.get('email');
       const roleParam = params.get('role');
 
-      if (inviteEmail || roleParam === 'manager') {
-        const cleanEmail = (inviteEmail || 'manager@email.com').trim().toLowerCase();
-        backendService.loginWithCredentials(cleanEmail);
-        switchUser('manager');
-        addToast(
-          'success',
-          `Welcome! Logged in as Manager / Auditor (${cleanEmail}) in Read-Only Audit Mode.`
-        );
-        // Clean URL parameters without reloading
-        window.history.replaceState({}, document.title, window.location.pathname);
+      const isMasterPortalRoute =
+        path === '/login' ||
+        path === '/portal' ||
+        path === '/access' ||
+        path === '/signin' ||
+        params.get('portal') === 'master' ||
+        params.get('portal') === 'access' ||
+        params.get('login') === 'true' ||
+        params.get('action') === 'login' ||
+        params.get('master') === 'true';
+
+      if (inviteEmail) {
+        const cleanEmail = inviteEmail.trim().toLowerCase();
+        const res = loginWithCredentials(cleanEmail);
+        if (res.success && res.user) {
+          addToast(
+            'success',
+            `Welcome! Logged in as ${res.user.role === 'owner' ? 'Owner' : 'Manager / Auditor'} (${cleanEmail}) in ${res.user.role === 'owner' ? 'Full Access' : 'Read-Only Audit Mode'}.`
+          );
+        }
+        window.history.replaceState({}, document.title, '/');
+      } else if (roleParam === 'manager') {
+        const res = loginWithCredentials('manager@email.com');
+        if (res.success && res.user) {
+          addToast(
+            'success',
+            'Welcome! Logged in as Manager / Auditor in Read-Only Audit Mode.'
+          );
+        }
+        window.history.replaceState({}, document.title, '/');
+      } else if (isMasterPortalRoute) {
+        setIsSignInModalOpen(true);
       }
     } catch {
       // Fallback
     }
-  }, [switchUser, addToast]);
+  }, [loginWithCredentials, addToast]);
 
   // Global search filter for Dashboard
   const searchedExpenses = useMemo(() => {

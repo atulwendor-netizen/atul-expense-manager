@@ -49,6 +49,9 @@ export const SignInModal: React.FC<SignInModalProps> = ({
         );
         setEmailInput('');
         setPasswordInput('');
+        if (typeof window !== 'undefined' && window.location.pathname === '/login') {
+          window.history.replaceState({}, document.title, '/');
+        }
         if (onClose) onClose();
       } else {
         setErrorMessage(
@@ -73,11 +76,13 @@ export const SignInModal: React.FC<SignInModalProps> = ({
               A
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">
-                Sign In to Atul Expense Manager
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Enter your credentials to access your workspace
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">
+                  Workspace Access Portal
+                </h3>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Atul Expense Manager • Universal Access Link
               </p>
             </div>
           </div>
@@ -104,7 +109,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                Account Email Address
+                Account Email Address (ईमेल आईडी)
               </label>
               <input
                 type="email"
@@ -112,7 +117,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
                 autoFocus
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
-                placeholder="name@atul-expenses.com or user@email.com"
+                placeholder="praakj@gmail.com, atul.wendor@gmail.com, or atul@atul-expenses.com"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white transition-all"
               />
             </div>
@@ -123,14 +128,14 @@ export const SignInModal: React.FC<SignInModalProps> = ({
                   Password
                 </label>
                 <span className="text-[10px] text-slate-400">
-                  Optional for invited members
+                  Optional for Managers & Auditors
                 </span>
               </div>
               <input
                 type="password"
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="Leave blank or enter password"
+                placeholder="Leave blank for Manager / Auditor"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white transition-all"
               />
             </div>
@@ -151,7 +156,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
               Role-Based Permission Enforcement
             </p>
             <p className="text-[10px] leading-relaxed">
-              Your role (Owner or Manager/Auditor) is verified by the backend upon login. You will see only the tools and data permitted for your account.
+              Your role (Owner or Manager / Auditor) is verified upon login. Managers automatically enter into Read-Only Audit Mode.
             </p>
           </div>
         </div>

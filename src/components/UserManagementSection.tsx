@@ -20,6 +20,7 @@ import {
   Copy,
   Check,
   Share2,
+  Globe,
 } from 'lucide-react';
 import { saveSupabaseConfig, clearSupabaseConfig, isSupabaseConfigured } from '../services/supabase';
 
@@ -131,6 +132,47 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
     }
     setCopiedId(id);
     onNotify('success', 'Invitation link copied to clipboard!');
+    setTimeout(() => setCopiedId(null), 2500);
+  };
+
+  const getMasterPortalLink = () => {
+    const origin =
+      typeof window !== 'undefined'
+        ? window.location.origin
+        : 'https://atul-expense-manager.vercel.app';
+    return `${origin}/login`;
+  };
+
+  const getWhatsAppShareLink = () => {
+    const link = getMasterPortalLink();
+    const text = encodeURIComponent(
+      `Hello! Please access the Atul Expense Manager portal using this Master Link:\n\n${link}\n\nSimply click the link and enter your email address to log in directly. No password is required for Managers / Auditors.`
+    );
+    return `https://wa.me/?text=${text}`;
+  };
+
+  const getInviteMessageText = () => {
+    const link = getMasterPortalLink();
+    return `Hello,\n\nYou have been authorized to access the Atul Expense Manager workspace.\n\nPlease use this Master Link to log in:\n${link}\n\nInstructions:\n1. Click the link above\n2. Enter your authorized email address\n3. Click 'Sign In to Workspace'\n\nYou will be logged in directly with your assigned permissions (Read-Only Audit Mode).\n\nBest regards,\nAtul`;
+  };
+
+  const handleCopyMasterLink = () => {
+    const link = getMasterPortalLink();
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(link);
+    }
+    setCopiedId('master-link');
+    onNotify('success', 'Master Link copied to clipboard! Share this single link with all users.');
+    setTimeout(() => setCopiedId(null), 2500);
+  };
+
+  const handleCopyInviteMessage = () => {
+    const message = getInviteMessageText();
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(message);
+    }
+    setCopiedId('master-message');
+    onNotify('success', 'Full invitation message copied to clipboard!');
     setTimeout(() => setCopiedId(null), 2500);
   };
 
@@ -256,6 +298,103 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
           <UserPlus className="h-4 w-4" />
           <span>Invite Manager</span>
         </button>
+      </div>
+
+      {/* Universal Master Access Link Card */}
+      <div className="rounded-2xl border-2 border-blue-500/20 bg-gradient-to-br from-blue-50/70 via-indigo-50/40 to-white p-5 shadow-xs dark:border-blue-900/60 dark:from-blue-950/40 dark:via-slate-900 dark:to-slate-900 space-y-3.5">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm shrink-0">
+              <Globe className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Universal Master Access Link (मास्टर एक्सेस लिंक)
+                </h3>
+                <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                  One Link for All Users
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Send this single master link to all team members, accountants, and auditors. Users simply enter their email ID to log in!
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Master Link URL Bar & Actions */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              readOnly
+              value={getMasterPortalLink()}
+              className="w-full rounded-xl border border-blue-200 bg-white px-3.5 py-2.5 text-xs font-mono font-medium text-blue-950 shadow-inner select-all focus:outline-none dark:border-blue-900 dark:bg-slate-800 dark:text-blue-200"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleCopyMasterLink}
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 active:scale-98 transition-all"
+            >
+              {copiedId === 'master-link' ? (
+                <>
+                  <Check className="h-4 w-4 text-emerald-300" />
+                  <span>Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="h-4 w-4" />
+                  <span>Copy Master Link</span>
+                </>
+              )}
+            </button>
+
+            <a
+              href={getWhatsAppShareLink()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3.5 py-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 transition-colors"
+            >
+              <Share2 className="h-4 w-4" />
+              <span>Share on WhatsApp</span>
+            </a>
+
+            <button
+              type="button"
+              onClick={handleCopyInviteMessage}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 transition-colors"
+            >
+              {copiedId === 'master-message' ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-emerald-600" />
+                  <span>Copied!</span>
+                </>
+              ) : (
+                <span>Copy Message</span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Hindi & English Helper note */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2 border-t border-blue-100 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-300">
+          <div className="flex items-start gap-1.5">
+            <span className="text-blue-600 font-bold shrink-0">🇮🇳 हिंदी:</span>
+            <span>
+              अलग-अलग यूज़र को अलग लिंक भेजने की ज़रूरत नहीं है। यह एक ही लिंक सबको भेजें, वे केवल अपना ईमेल आईडी डालकर तुरंत लॉगिन कर सकते हैं।
+            </span>
+          </div>
+          <div className="flex items-start gap-1.5">
+            <span className="text-blue-600 font-bold shrink-0">🇬🇧 English:</span>
+            <span>
+              No need to generate separate links. Send this master link to everyone. Users enter their email and log in directly as Read-Only Managers / Auditors.
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Users List */}
