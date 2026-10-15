@@ -117,7 +117,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
                 autoFocus
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
-                placeholder="praakj@gmail.com, atul.wendor@gmail.com, or atul@atul-expenses.com"
+                placeholder="Atul.wendor@gmail.com or praakj@gmail.com"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white transition-all"
               />
             </div>

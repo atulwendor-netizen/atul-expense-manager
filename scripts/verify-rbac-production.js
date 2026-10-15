@@ -87,6 +87,7 @@ const mutationMethods = [
   'revokeUserAccess',
   'reactivateUserAccess',
   'changeUserRole',
+  'deleteWorkspaceMember',
   'migrateLocalDataToCloud',
 ];
 
@@ -117,6 +118,15 @@ console.log('   - No default fallback to Owner when session is empty: ✅ PASSED
 console.log('   - Session role preserved from workspace members upon reload: ✅ PASSED');
 console.log('   - Logout completely purges session from localStorage: ✅ PASSED');
 console.log('   - Mandatory authentication gate blocks unauthenticated users: ✅ PASSED');
+
+// 9. Verify Owner Email is Atul.wendor@gmail.com and Delete Button exists
+console.log('\n9. Checking Owner Email Update & User Delete Button...');
+assert(backendContent.includes("email: 'Atul.wendor@gmail.com'"), 'INITIAL_OWNER email must be Atul.wendor@gmail.com');
+const userMgmtContent = fs.readFileSync(path.resolve('src/components/UserManagementSection.tsx'), 'utf-8');
+assert(userMgmtContent.includes('handleDeleteUser'), 'UserManagementSection must implement handleDeleteUser');
+assert(userMgmtContent.includes('<Trash2'), 'UserManagementSection must render Trash2 icon');
+console.log('   - Owner email updated to Atul.wendor@gmail.com: ✅ PASSED');
+console.log('   - Delete icon button added beside Revoke Access: ✅ PASSED');
 
 console.log('\n====================================================');
 console.log('🎉 ALL PRODUCTION RBAC ACCEPTANCE TESTS PASSED (100%)');

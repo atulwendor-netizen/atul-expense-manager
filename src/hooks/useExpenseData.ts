@@ -301,6 +301,11 @@ export function useExpenseData() {
     refreshState();
   }, [refreshState]);
 
+  const deleteUser = useCallback((userId: string) => {
+    backend.deleteWorkspaceMember(userId);
+    refreshState();
+  }, [refreshState]);
+
   // Cloud Data Migration
   const migrateLocalDataToCloud = useCallback(() => {
     const res = backend.migrateLocalDataToCloud({ expenses, reimbursements, trips });
@@ -480,6 +485,7 @@ export function useExpenseData() {
     revokeUserAccess,
     reactivateUserAccess,
     changeUserRole,
+    deleteUser,
     auditLogs,
     migrateLocalDataToCloud,
     expenses,

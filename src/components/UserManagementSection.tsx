@@ -21,6 +21,7 @@ import {
   Check,
   Share2,
   Globe,
+  Trash2,
 } from 'lucide-react';
 import { saveSupabaseConfig, clearSupabaseConfig, isSupabaseConfigured } from '../services/supabase';
 
@@ -32,6 +33,7 @@ interface UserManagementSectionProps {
   onRevokeAccess: (userId: string) => void;
   onReactivateUser: (userId: string) => void;
   onChangeUserRole: (userId: string, newRole: UserRole) => void;
+  onDeleteUser?: (userId: string) => void;
   onMigrateToCloud: () => {
     success: boolean;
     expensesImported: number;
@@ -51,6 +53,7 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
   onRevokeAccess,
   onReactivateUser,
   onChangeUserRole,
+  onDeleteUser,
   onMigrateToCloud,
   onNotify,
 }) => {
@@ -61,6 +64,23 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
   const [selectedUserForDetails, setSelectedUserForDetails] = useState<WorkspaceMember | null>(null);
   const [createdInviteModal, setCreatedInviteModal] = useState<{ email: string; role: UserRole; link: string; mailto: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleDeleteUser = (userId: string, name: string) => {
+    if (typeof window !== 'undefined' && !window.confirm(`Are you sure you want to completely delete user "${name}" from authorized users? This will revoke their access and remove their user account.`)) {
+      return;
+    }
+    try {
+      if (onDeleteUser) {
+        onDeleteUser(userId);
+      }
+      onNotify('success', `User ${name} has been removed from workspace.`);
+      if (selectedUserForDetails && (selectedUserForDetails.userId === userId || selectedUserForDetails.id === userId)) {
+        setSelectedUserForDetails(null);
+      }
+    } catch (err: any) {
+      onNotify('error', err.message || 'Failed to delete user');
+    }
+  };
 
   const handleReactivate = (userId: string, name: string) => {
     try {
@@ -499,6 +519,18 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                             Reactivate
                           </button>
                         )}
+
+                        {!isMemberOwner && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteUser(member.userId, member.name)}
+                            title={`Delete ${member.name}`}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400 transition-colors"
+                            aria-label={`Delete ${member.name}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -783,6 +815,16 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                     Revoke Access
                   </button>
                 )
+              )}
+              {selectedUserForDetails.role !== 'owner' && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteUser(selectedUserForDetails.userId, selectedUserForDetails.name)}
+                  className="rounded-xl border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:border-rose-900/60 dark:bg-slate-800 dark:text-rose-400 dark:hover:bg-rose-950/40 transition-colors flex items-center gap-1.5"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>Delete</span>
+                </button>
               )}
               <button
                 onClick={() => setSelectedUserForDetails(null)}

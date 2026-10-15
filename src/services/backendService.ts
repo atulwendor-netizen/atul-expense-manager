@@ -27,13 +27,25 @@ const DEFAULT_WORKSPACE: Workspace = {
 export const INITIAL_OWNER: UserProfile = {
   id: 'usr-owner-atul',
   name: 'Atul',
-  email: 'atul@atul-expenses.com',
+  email: 'Atul.wendor@gmail.com',
   role: 'owner',
   status: 'active',
   workspaceId: DEFAULT_WORKSPACE.id,
   avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
   createdAt: '2026-08-01T00:00:00Z',
   lastLoginAt: '2026-10-14T18:00:00Z',
+};
+
+export const isOwnerEmail = (email?: string | null): boolean => {
+  if (!email) return false;
+  const clean = email.trim().toLowerCase();
+  return (
+    clean === 'atul.wendor@gmail.com' ||
+    clean === 'atul@atul-expenses.com' ||
+    clean === 'atul' ||
+    clean === 'owner@email.com' ||
+    clean === 'basant'
+  );
 };
 
 export const INITIAL_MANAGER: UserProfile = {
@@ -115,12 +127,12 @@ class BackendService {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.role === 'owner' && (parsed.name === 'Basant' || parsed.id === 'usr-owner-basant')) {
+        if (parsed.role === 'owner' && (parsed.name === 'Atul' || parsed.id === 'usr-owner-atul' || parsed.name === 'Basant' || parsed.id === 'usr-owner-basant')) {
           this.currentUser = INITIAL_OWNER;
           this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(INITIAL_OWNER));
         } else if (parsed && parsed.email) {
           const cleanEmail = parsed.email.trim().toLowerCase();
-          if (cleanEmail === INITIAL_OWNER.email.toLowerCase() || cleanEmail === 'atul') {
+          if (isOwnerEmail(cleanEmail)) {
             this.currentUser = INITIAL_OWNER;
             this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(INITIAL_OWNER));
           } else {
@@ -196,12 +208,7 @@ class BackendService {
     }
 
     // 1. Owner account login
-    if (
-      cleanEmail === INITIAL_OWNER.email.toLowerCase() ||
-      cleanEmail === 'atul' ||
-      cleanEmail === 'basant' ||
-      cleanEmail === 'owner@email.com'
-    ) {
+    if (isOwnerEmail(cleanEmail)) {
       this.currentUser = INITIAL_OWNER;
       this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(INITIAL_OWNER));
       return { success: true, user: INITIAL_OWNER };
@@ -390,16 +397,6 @@ class BackendService {
         status: 'active',
         joinedAt: '2026-10-15T00:00:00Z',
       },
-      {
-        id: 'mem-4',
-        workspaceId: DEFAULT_WORKSPACE.id,
-        userId: 'usr-atul-wendor',
-        name: 'Atul.wendor',
-        email: 'atul.wendor@gmail.com',
-        role: 'manager',
-        status: 'active',
-        joinedAt: '2026-10-15T00:00:00Z',
-      },
     ];
 
     const raw = this.getItem(STORAGE_KEYS.MEMBERS);
@@ -410,31 +407,61 @@ class BackendService {
     try {
       const list: WorkspaceMember[] = JSON.parse(raw);
       let modified = false;
-      const updated = list.map((m) => {
-        if (m.role === 'owner' && (m.name === 'Basant' || m.userId === 'usr-owner-basant')) {
+
+      // Filter out accidental/stale manager record for atul.wendor@gmail.com
+      const filtered = list.filter((m) => {
+        if (m.email.toLowerCase() === 'atul.wendor@gmail.com' && m.role === 'manager') {
+          modified = true;
+          return false;
+        }
+        return true;
+      });
+
+      const updated = filtered.map((m) => {
+        if (
+          m.role === 'owner' ||
+          m.name === 'Basant' ||
+          m.userId === 'usr-owner-basant' ||
+          m.email.toLowerCase() === 'atul@atul-expenses.com' ||
+          m.email.toLowerCase() === 'atul.wendor@gmail.com'
+        ) {
           modified = true;
           return {
             ...m,
             userId: INITIAL_OWNER.id,
             name: INITIAL_OWNER.name,
             email: INITIAL_OWNER.email,
+            role: 'owner' as const,
           };
         }
         return m;
       });
 
+      // Deduplicate by email
+      const uniqueMembers: WorkspaceMember[] = [];
+      const seen = new Set<string>();
+      for (const m of updated) {
+        const key = m.email.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          uniqueMembers.push(m);
+        } else {
+          modified = true;
+        }
+      }
+
       // Ensure all initial known authorized users are present without duplicating
       for (const initMem of initialMembers) {
-        if (!updated.some((m) => m.email.toLowerCase() === initMem.email.toLowerCase())) {
-          updated.push(initMem);
+        if (!uniqueMembers.some((m) => m.email.toLowerCase() === initMem.email.toLowerCase())) {
+          uniqueMembers.push(initMem);
           modified = true;
         }
       }
 
       if (modified) {
-        this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
+        this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(uniqueMembers));
       }
-      return updated;
+      return uniqueMembers;
     } catch {
       return initialMembers;
     }
@@ -619,6 +646,37 @@ class BackendService {
       recordId: target.userId,
       previousValue: `Role: ${target.role} (${target.status})`,
       newValue: `Role: ${newRole} (Active)`,
+    });
+  }
+
+  deleteWorkspaceMember(userId: string): void {
+    this.enforceOwnerPermission('Delete User');
+    const members = this.getWorkspaceMembers();
+    const target = members.find((m) => m.userId === userId || m.id === userId);
+    if (!target) throw new Error('User not found.');
+    if (target.role === 'owner' || isOwnerEmail(target.email)) {
+      throw new Error('Action not permitted: Primary Workspace Owner cannot be deleted.');
+    }
+
+    const updated = members.filter((m) => m.userId !== userId && m.id !== userId);
+    this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
+
+    // Also remove any invitations for this user's email
+    const invitations = this.getInvitations();
+    const updatedInv = invitations.filter((i) => i.email.toLowerCase() !== target.email.toLowerCase());
+    this.setItem(STORAGE_KEYS.INVITATIONS, JSON.stringify(updatedInv));
+
+    // If current session is this user, log out immediately
+    if (this.currentUser && (this.currentUser.id === target.userId || this.currentUser.email.toLowerCase() === target.email.toLowerCase())) {
+      this.logout();
+    }
+
+    this.recordAuditLog({
+      action: 'Deleted User',
+      recordType: 'user',
+      recordId: target.userId,
+      previousValue: `User: ${target.name} (${target.email}, ${target.role})`,
+      newValue: 'User permanently deleted from authorized users',
     });
   }
 

@@ -40,6 +40,7 @@ interface SettingsPageProps {
   onRevokeAccess: (userId: string) => void;
   onReactivateUser: (userId: string) => void;
   onChangeUserRole: (userId: string, newRole: UserRole) => void;
+  onDeleteUser?: (userId: string) => void;
   onMigrateToCloud: () => {
     success: boolean;
     expensesImported: number;
@@ -66,6 +67,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   onRevokeAccess,
   onReactivateUser,
   onChangeUserRole,
+  onDeleteUser,
   onMigrateToCloud,
 }) => {
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -205,6 +207,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         onRevokeAccess={onRevokeAccess}
         onReactivateUser={onReactivateUser}
         onChangeUserRole={onChangeUserRole}
+        onDeleteUser={onDeleteUser}
         onMigrateToCloud={onMigrateToCloud}
         onNotify={onNotify}
       />

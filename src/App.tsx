@@ -36,6 +36,7 @@ export function App() {
     revokeUserAccess,
     reactivateUserAccess,
     changeUserRole,
+    deleteUser,
     auditLogs,
     migrateLocalDataToCloud,
     expenses,
@@ -565,6 +566,7 @@ export function App() {
               onRevokeAccess={revokeUserAccess}
               onReactivateUser={reactivateUserAccess}
               onChangeUserRole={changeUserRole}
+              onDeleteUser={deleteUser}
               onMigrateToCloud={migrateLocalDataToCloud}
             />
           )}
