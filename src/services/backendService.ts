@@ -20,14 +20,14 @@ import { initialTrips } from '../data/initialTrips';
 const DEFAULT_WORKSPACE: Workspace = {
   id: 'ws-atul-2026',
   name: 'Atul Enterprise Expense Account',
-  ownerId: 'usr-owner-basant',
+  ownerId: 'usr-owner-atul',
   createdAt: '2026-08-01T00:00:00Z',
 };
 
 export const INITIAL_OWNER: UserProfile = {
-  id: 'usr-owner-basant',
-  name: 'Basant',
-  email: 'basant@atul-expenses.com',
+  id: 'usr-owner-atul',
+  name: 'Atul',
+  email: 'atul@atul-expenses.com',
   role: 'owner',
   status: 'active',
   workspaceId: DEFAULT_WORKSPACE.id,
@@ -93,7 +93,13 @@ class BackendService {
     const saved = this.getItem(STORAGE_KEYS.CURRENT_USER);
     if (saved) {
       try {
-        this.currentUser = JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (parsed.role === 'owner' && (parsed.name === 'Basant' || parsed.id === 'usr-owner-basant')) {
+          this.currentUser = INITIAL_OWNER;
+          this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(INITIAL_OWNER));
+        } else {
+          this.currentUser = parsed;
+        }
       } catch {
         this.currentUser = INITIAL_OWNER;
       }
@@ -155,7 +161,7 @@ class BackendService {
       return { success: true, user };
     }
 
-    if (cleanEmail === INITIAL_OWNER.email.toLowerCase() || cleanEmail === 'basant') {
+    if (cleanEmail === INITIAL_OWNER.email.toLowerCase() || cleanEmail === 'atul' || cleanEmail === 'basant') {
       this.currentUser = INITIAL_OWNER;
       this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(INITIAL_OWNER));
       return { success: true, user: INITIAL_OWNER };
@@ -226,7 +232,24 @@ class BackendService {
       return initialMembers;
     }
     try {
-      return JSON.parse(raw);
+      const list: WorkspaceMember[] = JSON.parse(raw);
+      let modified = false;
+      const updated = list.map((m) => {
+        if (m.role === 'owner' && (m.name === 'Basant' || m.userId === 'usr-owner-basant')) {
+          modified = true;
+          return {
+            ...m,
+            userId: INITIAL_OWNER.id,
+            name: INITIAL_OWNER.name,
+            email: INITIAL_OWNER.email,
+          };
+        }
+        return m;
+      });
+      if (modified) {
+        this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updated));
+      }
+      return updated;
     } catch {
       return [];
     }
@@ -841,7 +864,7 @@ class BackendService {
           members: [INITIAL_OWNER.id, INITIAL_MANAGER.id],
           lastMessage: {
             id: 'msg-seed-03',
-            senderName: 'Basant',
+            senderName: 'Atul',
             content: 'Uploaded.',
             createdAt: '2026-08-25T16:00:00Z',
           },
@@ -859,7 +882,7 @@ class BackendService {
           members: [INITIAL_OWNER.id, INITIAL_MANAGER.id],
           lastMessage: {
             id: 'msg-seed-trip-01',
-            senderName: 'Basant',
+            senderName: 'Atul',
             content: 'Starting the Mumbai-Pune official visit. All transit tickets will be logged daily.',
             createdAt: '2026-08-22T10:15:00Z',
           },

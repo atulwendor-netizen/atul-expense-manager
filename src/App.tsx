@@ -282,7 +282,7 @@ export function App() {
           </div>
           <h2 className="text-xl font-bold">Your Access Has Been Revoked</h2>
           <p className="text-xs text-slate-400 leading-relaxed">
-            The Account Owner (Basant) has revoked your permissions to access this workspace. Financial records, reports, and team conversations are no longer available for this account session.
+            The Account Owner (Atul) has revoked your permissions to access this workspace. Financial records, reports, and team conversations are no longer available for this account session.
           </p>
           <div className="pt-2">
             <button

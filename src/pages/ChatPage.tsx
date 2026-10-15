@@ -340,7 +340,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
                     </span>
                   </div>
                   <p className="text-[10px] text-slate-400">
-                    Participants: Basant (Owner), Auditor Manager
+                    Participants: Atul (Owner), Auditor Manager
                   </p>
                 </div>
               </div>

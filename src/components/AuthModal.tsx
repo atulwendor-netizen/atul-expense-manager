@@ -55,7 +55,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     onNotify(
       'info',
       role === 'owner'
-        ? 'Switched to Basant (Account Owner) with full CRUD permissions'
+        ? 'Switched to Atul (Account Owner) with full CRUD permissions'
         : 'Switched to Manager / Auditor in Read-Only Audit Mode'
     );
     onClose();
@@ -137,7 +137,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/60 dark:text-blue-300 mb-1.5">
                   <Shield className="h-4 w-4" />
                 </div>
-                <span className="text-xs font-bold">Owner (Basant)</span>
+                <span className="text-xs font-bold">Owner (Atul)</span>
                 <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
                   Full CRUD & Admin
                 </span>
@@ -187,7 +187,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 type="email"
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
-                placeholder="e.g. manager@email.com or basant@atul-expenses.com"
+                placeholder="e.g. manager@email.com or atul@atul-expenses.com"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               />
             </div>
