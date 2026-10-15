@@ -30,6 +30,8 @@ interface DashboardPageProps {
   onOpenAddExpense: () => void;
   onOpenAddReimbursement: () => void;
   onEditExpense: (expense: Expense) => void;
+  onViewExpenseDetails?: (expense: Expense) => void;
+  isManager?: boolean;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -44,6 +46,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onOpenAddExpense,
   onOpenAddReimbursement,
   onEditExpense,
+  onViewExpenseDetails,
+  isManager = false,
 }) => {
   const isAllTrips = activeTripId === 'all';
   const scopeLabel = isAllTrips ? 'All Trips' : currentTrip?.name || 'Selected Trip';
@@ -229,14 +233,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             pendingReimbursement={metrics.pendingReimbursement}
             reimbursements={reimbursements}
             onNavigateToReimbursements={() => onNavigateTab('reimbursements')}
-            onAddReimbursement={onOpenAddReimbursement}
+            onAddReimbursement={isManager ? undefined : onOpenAddReimbursement}
           />
         </div>
 
         <div>
           <TopExpenses
             expenses={expenses}
-            onSelectExpense={(exp) => onEditExpense(exp)}
+            onSelectExpense={(exp) => {
+              if (isManager && onViewExpenseDetails) {
+                onViewExpenseDetails(exp);
+              } else {
+                onEditExpense(exp);
+              }
+            }}
           />
         </div>
 
@@ -244,8 +254,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <RecentExpenses
             expenses={expenses}
             onViewAll={() => onNavigateTab('expenses')}
-            onEditExpense={(exp) => onEditExpense(exp)}
-            onAddExpense={onOpenAddExpense}
+            onEditExpense={(exp) => {
+              if (isManager && onViewExpenseDetails) {
+                onViewExpenseDetails(exp);
+              } else {
+                onEditExpense(exp);
+              }
+            }}
+            onAddExpense={isManager ? undefined : onOpenAddExpense}
           />
         </div>
       </div>

@@ -149,6 +149,38 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     onNotify('info', 'Reset all records back to pristine spreadsheet seed');
   };
 
+  // Immediate Security Guard: Non-owners cannot view or access Settings & User Admin
+  if (!isOwner) {
+    return (
+      <div className="rounded-3xl border border-rose-200 bg-white p-8 dark:border-rose-900/60 dark:bg-slate-900 shadow-sm text-center max-w-lg mx-auto my-12 space-y-4 animate-in fade-in duration-150">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400">
+          <Lock className="h-7 w-7" />
+        </div>
+        <div>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+            Access Denied
+          </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+            Settings, User Administration, and Database controls are restricted exclusively to the Account Owner (Atul). Your account operates in Read-Only Audit Mode.
+          </p>
+        </div>
+        <div className="pt-2">
+          <button
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                window.location.hash = '';
+                window.location.pathname = '/';
+              }
+            }}
+            className="rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors shadow-sm"
+          >
+            Return to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       {/* Page Header */}

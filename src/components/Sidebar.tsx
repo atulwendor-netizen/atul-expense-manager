@@ -23,7 +23,14 @@ interface SidebarProps {
   isManager?: boolean;
 }
 
-const navItems = [
+interface NavItemDef {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  ownerOnly?: boolean;
+}
+
+const navItems: NavItemDef[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'expenses', label: 'Expenses', icon: Receipt },
   { id: 'trips', label: 'Trips', icon: Compass },
@@ -32,7 +39,7 @@ const navItems = [
   { id: 'reports', label: 'Reports & Export', icon: FileSpreadsheet },
   { id: 'chat', label: 'Team Chat', icon: MessageSquare },
   { id: 'audit-log', label: 'Audit Log', icon: ShieldAlert },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'settings', label: 'Settings', icon: Settings, ownerOnly: true },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -43,6 +50,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   incompleteCount,
   isManager = false,
 }) => {
+  const visibleNavItems = navItems.filter((item) => !isManager || !item.ownerOnly);
   return (
     <>
       {/* Mobile backdrop */}
@@ -99,7 +107,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Navigation list */}
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
 

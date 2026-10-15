@@ -197,14 +197,16 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/75 dark:border-slate-800 dark:bg-slate-800/50 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                <th className="py-3.5 pl-4 pr-2 w-10">
-                  <input
-                    type="checkbox"
-                    checked={isAllCurrentPageSelected}
-                    onChange={handleToggleSelectAll}
-                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800"
-                  />
-                </th>
+                {!isManager && (
+                  <th className="py-3.5 pl-4 pr-2 w-10">
+                    <input
+                      type="checkbox"
+                      checked={isAllCurrentPageSelected}
+                      onChange={handleToggleSelectAll}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800"
+                    />
+                  </th>
+                )}
 
                 <th
                   onClick={() => handleSort('date')}
@@ -272,17 +274,19 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
                     }`}
                   >
                     {/* Checkbox */}
-                    <td
-                      className="py-3 pl-4 pr-2"
-                      onClick={(e) => handleToggleSelectRow(expense.id, e)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => {}}
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800"
-                      />
-                    </td>
+                    {!isManager && (
+                      <td
+                        className="py-3 pl-4 pr-2"
+                        onClick={(e) => handleToggleSelectRow(expense.id, e)}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {}}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800"
+                        />
+                      </td>
+                    )}
 
                     {/* Date */}
                     <td className="py-3 px-3 whitespace-nowrap text-slate-600 dark:text-slate-400 font-medium">
@@ -428,17 +432,19 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-start gap-2.5 min-w-0">
-                  <div
-                    onClick={(e) => handleToggleSelectRow(expense.id, e)}
-                    className="pt-0.5"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => {}}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600"
-                    />
-                  </div>
+                  {!isManager && (
+                    <div
+                      onClick={(e) => handleToggleSelectRow(expense.id, e)}
+                      className="pt-0.5"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {}}
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                      />
+                    </div>
+                  )}
                   <div className="min-w-0">
                     <h4 className="font-bold text-xs text-slate-900 dark:text-white truncate">
                       {expense.description || 'Untitled Expense'}

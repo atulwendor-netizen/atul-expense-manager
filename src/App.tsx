@@ -16,7 +16,8 @@ import { ExpenseModal } from './components/ExpenseModal';
 import { ExpenseDetailsModal } from './components/ExpenseDetailsModal';
 import { ReimbursementModal } from './components/ReimbursementModal';
 import { TripModal } from './components/TripModal';
-import { AuthModal } from './components/AuthModal';
+import { AccountProfileModal } from './components/AccountProfileModal';
+import { SignInModal } from './components/SignInModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { Expense, Reimbursement, Trip } from './types/index';
 import { calculateDashboardMetrics } from './utils/calculations';
@@ -84,7 +85,8 @@ export function App() {
   const [reimbursementToEdit, setReimbursementToEdit] = useState<Reimbursement | null>(null);
   const [isTripModalOpen, setIsTripModalOpen] = useState(false);
   const [tripToEdit, setTripToEdit] = useState<Trip | null>(null);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isSignInModalOpen, setIsSignInModalOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Toast notification helper
@@ -95,6 +97,29 @@ export function App() {
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // Strict Route Guard: If a Manager attempts to navigate to /settings, immediately redirect to /dashboard and show Access Denied toast
+  useEffect(() => {
+    if (isManager && activeTab === 'settings') {
+      setActiveTab('dashboard');
+      addToast('error', 'Access Denied: Settings and administrative configuration are restricted to the Account Owner.');
+    }
+  }, [isManager, activeTab, setActiveTab, addToast]);
+
+  const handleSelectTab = useCallback((tab: string) => {
+    if (isManager && tab === 'settings') {
+      addToast('error', 'Access Denied: Settings and administrative configuration are restricted to the Account Owner.');
+      return;
+    }
+    setActiveTab(tab);
+    setSearchQuery('');
+  }, [isManager, addToast, setActiveTab, setSearchQuery]);
+
+  const handleSignOut = useCallback(() => {
+    backendService.logout();
+    setIsProfileModalOpen(false);
+    setIsSignInModalOpen(true);
   }, []);
 
   // Handle direct invitation link parameters (?role=manager&email=...)
@@ -311,20 +336,18 @@ export function App() {
           </p>
           <div className="pt-2">
             <button
-              onClick={() => setIsAuthModalOpen(true)}
+              onClick={() => setIsSignInModalOpen(true)}
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors shadow-sm"
             >
               <LogIn className="h-4 w-4" />
-              <span>Sign In with Another Account / Switch User</span>
+              <span>Sign In with Another Account</span>
             </button>
           </div>
         </div>
 
-        <AuthModal
-          isOpen={isAuthModalOpen}
-          onClose={() => setIsAuthModalOpen(false)}
-          currentUser={currentUser}
-          onSwitchUser={switchUser}
+        <SignInModal
+          isOpen={isSignInModalOpen}
+          onClose={() => setIsSignInModalOpen(false)}
           onLoginWithCredentials={loginWithCredentials}
           onNotify={addToast}
         />
@@ -337,10 +360,7 @@ export function App() {
       {/* Sidebar */}
       <Sidebar
         activeTab={activeTab}
-        onSelectTab={(tab) => {
-          setActiveTab(tab);
-          setSearchQuery('');
-        }}
+        onSelectTab={handleSelectTab}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         incompleteCount={dashboardMetrics.incompleteTransactions}
@@ -360,12 +380,12 @@ export function App() {
           onOpenAddExpense={handleOpenAddExpense}
           onOpenMobileMenu={() => setIsSidebarOpen(true)}
           currentUser={currentUser}
-          onOpenAuthModal={() => setIsAuthModalOpen(true)}
+          onOpenProfileModal={() => setIsProfileModalOpen(true)}
           notifications={notifications}
           onMarkNotificationRead={markNotificationRead}
           onMarkAllNotificationsRead={markAllNotificationsRead}
           onNavigateTab={(tab, linkId) => {
-            setActiveTab(tab);
+            handleSelectTab(tab);
             if (tab === 'chat' && linkId) {
               setActiveConversationId(linkId);
             }
@@ -397,10 +417,12 @@ export function App() {
               currentTrip={currentTrip}
               activeTripId={activeTripId}
               onSelectTrip={setActiveTripId}
-              onNavigateTab={setActiveTab}
+              onNavigateTab={handleSelectTab}
               onOpenAddExpense={handleOpenAddExpense}
               onOpenAddReimbursement={handleOpenAddReimbursement}
               onEditExpense={handleEditExpense}
+              onViewExpenseDetails={(expense) => setViewingExpenseDetails(expense)}
+              isManager={isManager}
             />
           )}
 
@@ -444,7 +466,7 @@ export function App() {
               reimbursements={reimbursements}
               activeTripId={activeTripId}
               onSelectTrip={setActiveTripId}
-              onNavigateTab={setActiveTab}
+              onNavigateTab={handleSelectTab}
               onAddTrip={handleOpenAddTrip}
               onEditTrip={handleEditTrip}
               onDeleteTrip={handleDeleteTrip}
@@ -570,12 +592,19 @@ export function App() {
         tripToEdit={tripToEdit}
       />
 
-      {/* Auth / Role Switcher Modal */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
+      {/* Account Profile & Session Modal (View authenticated profile, permissions breakdown, and sign out) */}
+      <AccountProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
         currentUser={currentUser}
-        onSwitchUser={switchUser}
+        onSignOut={handleSignOut}
+        onNotify={addToast}
+      />
+
+      {/* Sign In Modal (Authenticates against backend credentials/invitations) */}
+      <SignInModal
+        isOpen={isSignInModalOpen}
+        onClose={() => setIsSignInModalOpen(false)}
         onLoginWithCredentials={loginWithCredentials}
         onNotify={addToast}
       />

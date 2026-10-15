@@ -24,7 +24,7 @@ interface HeaderProps {
   onOpenAddExpense: () => void;
   onOpenMobileMenu: () => void;
   currentUser: UserProfile;
-  onOpenAuthModal: () => void;
+  onOpenProfileModal: () => void;
   notifications: AppNotification[];
   onMarkNotificationRead: (id: string) => void;
   onMarkAllNotificationsRead: () => void;
@@ -42,7 +42,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAddExpense,
   onOpenMobileMenu,
   currentUser,
-  onOpenAuthModal,
+  onOpenProfileModal,
   notifications,
   onMarkNotificationRead,
   onMarkAllNotificationsRead,
@@ -116,35 +116,50 @@ export const Header: React.FC<HeaderProps> = ({
           {isDarkMode ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4" />}
         </button>
 
-        {/* User Account / Role Pill (Click to switch user or view profile) */}
+        {/* Authenticated User Account Pill (Shows actual account details, click to view permissions & sign out) */}
         <button
-          onClick={onOpenAuthModal}
-          title="Account & Role Switcher"
-          className={`flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+          onClick={onOpenProfileModal}
+          title="Account Profile & Permissions"
+          className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all shadow-xs ${
             isManager
-              ? 'border-amber-300 bg-amber-50/80 text-amber-900 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/60 dark:text-amber-200'
-              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200'
+              ? 'border-amber-300 bg-amber-50/90 text-amber-950 hover:bg-amber-100 dark:border-amber-900/80 dark:bg-amber-950/60 dark:text-amber-200'
+              : 'border-blue-200 bg-blue-50/70 text-blue-950 hover:bg-blue-100/80 dark:border-blue-900/70 dark:bg-blue-950/50 dark:text-blue-100'
           }`}
         >
           <div
-            className={`flex h-6 w-6 items-center justify-center rounded-lg text-white font-bold text-[10px] ${
+            className={`flex h-7 w-7 items-center justify-center rounded-lg text-white font-bold text-xs shrink-0 shadow-xs ${
               isManager ? 'bg-amber-600' : 'bg-blue-600'
             }`}
           >
-            {isManager ? <Eye className="h-3 w-3" /> : <Shield className="h-3 w-3" />}
+            {isManager ? <Eye className="h-3.5 w-3.5" /> : <Shield className="h-3.5 w-3.5" />}
           </div>
           <div className="hidden sm:block text-left">
-            <span className="block leading-tight text-[11px] font-bold">
-              {currentUser.name}
-            </span>
-            <span className="block leading-none text-[9px] text-slate-400 uppercase tracking-wider">
-              {currentUser.role}
-            </span>
+            <div className="flex items-center gap-1.5 leading-tight">
+              <span className="font-bold text-[11px] text-slate-900 dark:text-white">
+                {currentUser.name}
+              </span>
+              <span
+                className={`rounded px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider ${
+                  isManager
+                    ? 'bg-amber-200/80 text-amber-900 dark:bg-amber-900/80 dark:text-amber-200'
+                    : 'bg-blue-200/80 text-blue-900 dark:bg-blue-900/80 dark:text-blue-200'
+                }`}
+              >
+                {isManager ? 'Manager (Audit)' : 'Owner'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1 leading-tight text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+              <span className="truncate max-w-[130px]">{currentUser.email}</span>
+              <span>•</span>
+              <span className={isManager ? 'text-amber-700 dark:text-amber-300 font-medium' : 'text-emerald-700 dark:text-emerald-400 font-medium'}>
+                {isManager ? 'Read Only' : 'Full Access'}
+              </span>
+            </div>
           </div>
         </button>
 
-        {/* Add Expense Button (Strictly hidden for Manager role!) */}
-        {!isManager ? (
+        {/* Add Expense Button (Strictly hidden for Manager/Auditor role) */}
+        {!isManager && (
           <button
             onClick={onOpenAddExpense}
             className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all"
@@ -153,14 +168,6 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden sm:inline">Add Expense</span>
             <span className="sm:hidden">Add</span>
           </button>
-        ) : (
-          <div
-            title="Expense creation disabled in Read-Only Audit Mode"
-            className="hidden sm:flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed select-none"
-          >
-            <Plus className="h-4 w-4 opacity-50" />
-            <span>Add Expense</span>
-          </div>
         )}
       </div>
     </header>
