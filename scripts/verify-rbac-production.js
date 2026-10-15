@@ -128,6 +128,17 @@ assert(userMgmtContent.includes('<Trash2'), 'UserManagementSection must render T
 console.log('   - Owner email updated to Atul.wendor@gmail.com: ✅ PASSED');
 console.log('   - Delete icon button added beside Revoke Access: ✅ PASSED');
 
+// 10. Verify Clean Input Placeholders (No Demo Emails)
+console.log('\n10. Checking Absence of Demo Emails in Input Placeholders...');
+const signInModalContent = fs.readFileSync(path.resolve('src/components/SignInModal.tsx'), 'utf-8');
+assert(!signInModalContent.includes('praakj@gmail.com, atul.wendor@gmail.com'), 'SignInModal must not show demo emails');
+assert(signInModalContent.includes('placeholder="Enter your email address"'), 'SignInModal must have clean placeholder');
+assert(!userMgmtContent.includes('manager@auditfirm.com'), 'UserManagementSection must not have demo email in placeholder');
+assert(backendContent.includes("if (m.email.toLowerCase() === 'manager@email.com')"), 'backendService must filter out demo manager@email.com');
+console.log('   - SignInModal email placeholder cleaned to "Enter your email address": ✅ PASSED');
+console.log('   - UserManagementSection invite placeholder cleaned: ✅ PASSED');
+console.log('   - Demo manager@email.com filtered out: ✅ PASSED');
+
 console.log('\n====================================================');
 console.log('🎉 ALL PRODUCTION RBAC ACCEPTANCE TESTS PASSED (100%)');
 console.log('====================================================\n');

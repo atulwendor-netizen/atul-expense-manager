@@ -701,7 +701,7 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
                     required
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
-                    placeholder="manager@auditfirm.com"
+                    placeholder="Enter team member email address"
                     className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-xs font-medium text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white focus:outline-none focus:border-blue-500"
                   />
                 </div>

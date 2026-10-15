@@ -117,7 +117,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
                 autoFocus
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
-                placeholder="Atul.wendor@gmail.com or praakj@gmail.com"
+                placeholder="Enter your email address"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white transition-all"
               />
             </div>
@@ -135,7 +135,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
                 type="password"
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="Leave blank for Manager / Auditor"
+                placeholder="Enter your password (optional)"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white transition-all"
               />
             </div>

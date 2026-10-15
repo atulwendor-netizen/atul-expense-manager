@@ -380,16 +380,6 @@ class BackendService {
       {
         id: 'mem-2',
         workspaceId: DEFAULT_WORKSPACE.id,
-        userId: INITIAL_MANAGER.id,
-        name: INITIAL_MANAGER.name,
-        email: INITIAL_MANAGER.email,
-        role: 'manager',
-        status: 'active',
-        joinedAt: '2026-08-15T00:00:00Z',
-      },
-      {
-        id: 'mem-3',
-        workspaceId: DEFAULT_WORKSPACE.id,
         userId: 'usr-praakj',
         name: 'Praakj',
         email: 'praakj@gmail.com',
@@ -408,9 +398,13 @@ class BackendService {
       const list: WorkspaceMember[] = JSON.parse(raw);
       let modified = false;
 
-      // Filter out accidental/stale manager record for atul.wendor@gmail.com
+      // Filter out accidental/stale manager records and demo emails (e.g. manager@email.com)
       const filtered = list.filter((m) => {
         if (m.email.toLowerCase() === 'atul.wendor@gmail.com' && m.role === 'manager') {
+          modified = true;
+          return false;
+        }
+        if (m.email.toLowerCase() === 'manager@email.com') {
           modified = true;
           return false;
         }
