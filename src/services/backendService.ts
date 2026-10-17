@@ -12,10 +12,19 @@ import {
   ChatMessage,
   MessageAttachment,
   AppNotification,
+  PaymentProof,
+  PaymentProofStatus,
+  GoogleDriveConfig,
+  DriveFolderFile,
 } from '../types/index';
 import { initialExpenses } from '../data/initialExpenses';
 import { initialReimbursements } from '../data/initialReimbursements';
 import { initialTrips } from '../data/initialTrips';
+import {
+  initialPaymentProofs,
+  initialDriveFolderFiles,
+  initialGoogleDriveConfig,
+} from '../data/initialPaymentProofs';
 
 const DEFAULT_WORKSPACE: Workspace = {
   id: 'ws-atul-2026',
@@ -82,6 +91,8 @@ const STORAGE_KEYS = {
   CONVERSATIONS: 'atul_cloud_conversations_v1',
   MESSAGES: 'atul_cloud_messages_v1',
   NOTIFICATIONS: 'atul_cloud_notifications_v1',
+  PAYMENT_PROOFS: 'atul_cloud_payment_proofs_v1',
+  GDRIVE_CONFIG: 'atul_cloud_gdrive_config_v1',
 };
 
 class BackendService {
@@ -1641,6 +1652,390 @@ class BackendService {
     } catch {
       // ignore
     }
+  }
+
+  // --- GOOGLE DRIVE PAYMENT PROOFS & FINANCE AUDIT ---
+
+  getPaymentProofs(): PaymentProof[] {
+    this.enforceActiveMember();
+    const raw = this.getItem(STORAGE_KEYS.PAYMENT_PROOFS);
+    let proofs: PaymentProof[] = [];
+    if (!raw) {
+      proofs = [...initialPaymentProofs];
+      this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(proofs));
+    } else {
+      try {
+        proofs = JSON.parse(raw);
+        if (!Array.isArray(proofs) || proofs.length === 0) {
+          proofs = [...initialPaymentProofs];
+          this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(proofs));
+        }
+      } catch {
+        proofs = [...initialPaymentProofs];
+      }
+    }
+
+    // Run dynamic deduplication detection check on all proofs
+    const refMap = new Map<string, string[]>(); // ref -> proofIds
+    const amountDateTripMap = new Map<string, string[]>(); // amount_date_trip -> proofIds
+
+    proofs.forEach((p) => {
+      // Index references
+      if (p.transactionReference && p.transactionReference.trim()) {
+        const cleanRef = p.transactionReference.trim().toUpperCase();
+        const existing = refMap.get(cleanRef) || [];
+        existing.push(p.id);
+        refMap.set(cleanRef, existing);
+      }
+      // Index amount + date + trip combinations
+      if (p.amount && p.paymentDate && p.tripId) {
+        const comboKey = `${p.amount}_${p.paymentDate}_${p.tripId}`;
+        const existing = amountDateTripMap.get(comboKey) || [];
+        existing.push(p.id);
+        amountDateTripMap.set(comboKey, existing);
+      }
+    });
+
+    // Check each proof for duplicates
+    return proofs.map((p) => {
+      let isDuplicate = false;
+      let duplicateReason: string | null = null;
+
+      // 1. Duplicate Drive File ID
+      if (p.driveFileId) {
+        const driveCount = proofs.filter((other) => other.driveFileId === p.driveFileId).length;
+        if (driveCount > 1) {
+          isDuplicate = true;
+          duplicateReason = `Duplicate Google Drive File ID (${p.driveFileId}) imported multiple times.`;
+        }
+      }
+
+      // 2. Duplicate Transaction Reference (UTR / PNR / Invoice)
+      if (!isDuplicate && p.transactionReference && p.transactionReference.trim()) {
+        const cleanRef = p.transactionReference.trim().toUpperCase();
+        const matches = refMap.get(cleanRef) || [];
+        if (matches.length > 1) {
+          isDuplicate = true;
+          duplicateReason = `Potential duplicate transaction reference: "${p.transactionReference}" appears on ${matches.length} payment proofs.`;
+        }
+      }
+
+      // 3. Duplicate Amount + Date + Trip
+      if (!isDuplicate && p.amount && p.paymentDate && p.tripId) {
+        const comboKey = `${p.amount}_${p.paymentDate}_${p.tripId}`;
+        const matches = amountDateTripMap.get(comboKey) || [];
+        if (matches.length > 1) {
+          isDuplicate = true;
+          duplicateReason = `Identical amount (₹${p.amount.toLocaleString('en-IN')}) and payment date (${p.paymentDate}) in the same trip scope.`;
+        }
+      }
+
+      return {
+        ...p,
+        isFlaggedDuplicate: isDuplicate,
+        duplicateReason: duplicateReason || p.duplicateReason || null,
+      };
+    });
+  }
+
+  addPaymentProof(data: Omit<PaymentProof, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): PaymentProof {
+    this.enforceActiveMember();
+    const proofs = this.getPaymentProofs();
+
+    // Prevent duplicate import of the exact same Drive file ID
+    if (data.driveFileId) {
+      const existing = proofs.find((p) => p.driveFileId === data.driveFileId);
+      if (existing) {
+        throw new Error(`Google Drive file "${data.fileName}" is already imported as Payment Proof #${existing.id}.`);
+      }
+    }
+
+    const newProof: PaymentProof = {
+      ...data,
+      id: data.id || `proof-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      status: data.status || 'pending',
+      importedBy: this.currentUser.id,
+      importedByName: this.currentUser.name,
+      importedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const updated = [newProof, ...proofs];
+    this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(updated));
+
+    // If an expense is associated, update expense receipt metadata
+    if (newProof.expenseId) {
+      try {
+        const expenses = this.getExpenses();
+        const expIdx = expenses.findIndex((e) => e.id === newProof.expenseId);
+        if (expIdx !== -1) {
+          expenses[expIdx] = {
+            ...expenses[expIdx],
+            receipt: newProof.previewUrl || expenses[expIdx].receipt,
+            receiptName: newProof.fileName,
+          };
+          this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+        }
+      } catch {
+        // Continue
+      }
+    }
+
+    this.recordAuditLog({
+      action: 'Imported Payment Proof',
+      recordType: 'proof',
+      recordId: newProof.id,
+      previousValue: null,
+      newValue: `Imported "${newProof.fileName}" - ₹${newProof.amount.toLocaleString('en-IN')} (${newProof.proofType})`,
+    });
+
+    return newProof;
+  }
+
+  importDrivePaymentProofs(batch: Array<Omit<PaymentProof, 'id' | 'createdAt' | 'updatedAt'>>): {
+    imported: number;
+    duplicates: number;
+    proofs: PaymentProof[];
+  } {
+    this.enforceActiveMember();
+    const existingProofs = this.getPaymentProofs();
+    const existingDriveIds = new Set(existingProofs.map((p) => p.driveFileId).filter(Boolean));
+    const newItems: PaymentProof[] = [];
+    let duplicates = 0;
+
+    for (const item of batch) {
+      if (item.driveFileId && existingDriveIds.has(item.driveFileId)) {
+        duplicates++;
+        continue;
+      }
+
+      const newProof: PaymentProof = {
+        ...item,
+        id: `proof-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        status: item.status || 'pending',
+        importedBy: this.currentUser.id,
+        importedByName: this.currentUser.name,
+        importedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (item.driveFileId) {
+        existingDriveIds.add(item.driveFileId);
+      }
+      newItems.push(newProof);
+    }
+
+    const merged = [...newItems, ...existingProofs];
+    this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(merged));
+
+    // Update any linked expenses
+    const expenses = this.getExpenses();
+    let expensesModified = false;
+    for (const proof of newItems) {
+      if (proof.expenseId) {
+        const expIdx = expenses.findIndex((e) => e.id === proof.expenseId);
+        if (expIdx !== -1) {
+          expenses[expIdx] = {
+            ...expenses[expIdx],
+            receipt: proof.previewUrl || expenses[expIdx].receipt,
+            receiptName: proof.fileName,
+          };
+          expensesModified = true;
+        }
+      }
+    }
+    if (expensesModified) {
+      this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+    }
+
+    this.recordAuditLog({
+      action: 'Batch Imported Google Drive Proofs',
+      recordType: 'proof',
+      recordId: `batch-${Date.now()}`,
+      previousValue: null,
+      newValue: `Imported ${newItems.length} payment proofs from Google Drive folder "Expense Manager Payment Proofs". ${duplicates} duplicates skipped.`,
+    });
+
+    return {
+      imported: newItems.length,
+      duplicates,
+      proofs: merged,
+    };
+  }
+
+  updatePaymentProof(updatedProof: PaymentProof): void {
+    this.enforceActiveMember();
+    const proofs = this.getPaymentProofs();
+    const index = proofs.findIndex((p) => p.id === updatedProof.id);
+    if (index === -1) throw new Error('Payment proof record not found.');
+
+    const old = proofs[index];
+    proofs[index] = {
+      ...updatedProof,
+      updatedAt: new Date().toISOString(),
+    };
+    this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(proofs));
+
+    this.recordAuditLog({
+      action: 'Updated Payment Proof',
+      recordType: 'proof',
+      recordId: updatedProof.id,
+      previousValue: `"${old.fileName}" - ₹${old.amount}`,
+      newValue: `"${updatedProof.fileName}" - ₹${updatedProof.amount} (${updatedProof.status})`,
+    });
+  }
+
+  deletePaymentProof(id: string): void {
+    this.enforceOwnerPermission('Delete Payment Proof');
+    const proofs = this.getPaymentProofs();
+    const target = proofs.find((p) => p.id === id);
+    if (!target) return;
+
+    const filtered = proofs.filter((p) => p.id !== id);
+    this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(filtered));
+
+    this.recordAuditLog({
+      action: 'Deleted Payment Proof',
+      recordType: 'proof',
+      recordId: id,
+      previousValue: `"${target.fileName}" - ₹${target.amount}`,
+      newValue: 'Record Removed',
+    });
+  }
+
+  // Finance and Manager Audit: Verify, Reject, or Request Clarification
+  reviewPaymentProof(
+    proofId: string,
+    status: PaymentProofStatus,
+    reviewNotes?: string
+  ): PaymentProof {
+    this.enforceActiveMember();
+    const proofs = this.getPaymentProofs();
+    const index = proofs.findIndex((p) => p.id === proofId);
+    if (index === -1) throw new Error('Payment proof record not found.');
+
+    const target = proofs[index];
+    const oldStatus = target.status;
+
+    const updatedProof: PaymentProof = {
+      ...target,
+      status,
+      reviewedBy: this.currentUser.id,
+      reviewedByName: this.currentUser.name,
+      reviewedByRole: this.currentUser.role,
+      reviewedAt: new Date().toISOString(),
+      reviewNotes: reviewNotes || null,
+      updatedAt: new Date().toISOString(),
+    };
+
+    proofs[index] = updatedProof;
+    this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(proofs));
+
+    // Record review action in official immutable audit log
+    this.recordAuditLog({
+      action: `Audit Review: ${status === 'verified' ? 'Verified' : status === 'rejected' ? 'Rejected' : 'Clarification Requested'}`,
+      recordType: 'proof',
+      recordId: proofId,
+      previousValue: `Status: ${oldStatus.toUpperCase()}`,
+      newValue: `Status: ${status.toUpperCase()} by ${this.currentUser.name} (${this.currentUser.role.toUpperCase()}) - ${reviewNotes || 'Confirmed against ledger records'}`,
+    });
+
+    // Notify other workspace members
+    const recipientId =
+      this.currentUser.id === INITIAL_OWNER.id ? INITIAL_MANAGER.id : INITIAL_OWNER.id;
+    this.createNotification({
+      userId: recipientId,
+      title: `Payment Proof ${status === 'verified' ? 'Verified' : status === 'rejected' ? 'Rejected' : 'Audit Clarification'}`,
+      message: `${this.currentUser.name} set status of "${target.fileName}" to ${status.toUpperCase()}: ${reviewNotes || 'No notes'}`,
+      linkTab: 'payment-proofs',
+      linkId: proofId,
+    });
+
+    return updatedProof;
+  }
+
+  // Identify expenses that lack payment proof for audit completion
+  getMissingProofExpenses(): Expense[] {
+    this.enforceActiveMember();
+    const expenses = this.getExpenses().filter((e) => e.status === 'valid');
+    const proofs = this.getPaymentProofs();
+    const proofExpenseIds = new Set(proofs.map((p) => p.expenseId).filter(Boolean));
+
+    return expenses.filter((e) => !proofExpenseIds.has(e.id));
+  }
+
+  // Detect duplicate proofs by Drive File ID, Transaction Reference, or matching Amount+Date
+  detectDuplicateProofs(proofsList?: PaymentProof[]): {
+    duplicatesCount: number;
+    duplicateDetails: Array<{ proofId: string; reason: string }>;
+  } {
+    const list = proofsList || this.getPaymentProofs();
+    const duplicates = list.filter((p) => p.isFlaggedDuplicate);
+    return {
+      duplicatesCount: duplicates.length,
+      duplicateDetails: duplicates.map((d) => ({
+        proofId: d.id,
+        reason: d.duplicateReason || 'Potential duplicate payment record detected',
+      })),
+    };
+  }
+
+  // Google Drive Configuration
+  getGoogleDriveConfig(): GoogleDriveConfig {
+    this.enforceActiveMember();
+    const raw = this.getItem(STORAGE_KEYS.GDRIVE_CONFIG);
+    if (!raw) {
+      this.setItem(STORAGE_KEYS.GDRIVE_CONFIG, JSON.stringify(initialGoogleDriveConfig));
+      return initialGoogleDriveConfig;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return initialGoogleDriveConfig;
+    }
+  }
+
+  updateGoogleDriveConfig(partial: Partial<GoogleDriveConfig>): GoogleDriveConfig {
+    this.enforceOwnerPermission('Update Google Drive Configuration');
+    const current = this.getGoogleDriveConfig();
+    const updated: GoogleDriveConfig = {
+      ...current,
+      ...partial,
+      lastSyncedAt: new Date().toISOString(),
+    };
+    this.setItem(STORAGE_KEYS.GDRIVE_CONFIG, JSON.stringify(updated));
+
+    this.recordAuditLog({
+      action: 'Updated Google Drive Configuration',
+      recordType: 'system',
+      recordId: 'gdrive-config',
+      previousValue: `Folder: "${current.folderName}" (Connected: ${current.isConnected})`,
+      newValue: `Folder: "${updated.folderName}" (Connected: ${updated.isConnected})`,
+    });
+
+    return updated;
+  }
+
+  // Fetch available files from configured Google Drive folder (virtual categories)
+  getDriveFolderFiles(virtualFolder?: string): DriveFolderFile[] {
+    this.enforceActiveMember();
+    if (!virtualFolder || virtualFolder === 'all') {
+      return initialDriveFolderFiles;
+    }
+    return initialDriveFolderFiles.filter((f) => f.virtualFolder === virtualFolder);
+  }
+
+  refreshDriveFolder(): { success: boolean; filesCount: number; lastSyncedAt: string } {
+    this.enforceActiveMember();
+    const lastSyncedAt = new Date().toISOString();
+    this.updateGoogleDriveConfig({ lastSyncedAt });
+    return {
+      success: true,
+      filesCount: initialDriveFolderFiles.length,
+      lastSyncedAt,
+    };
   }
 }
 

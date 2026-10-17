@@ -17,6 +17,8 @@ import {
   Calendar,
   TrendingDown,
   AlertTriangle,
+  FileCheck,
+  ArrowRight,
 } from 'lucide-react';
 
 interface DashboardPageProps {
@@ -142,6 +144,30 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         onSelectTrip={onSelectTrip}
         onManageTrips={() => onNavigateTab('trips')}
       />
+
+      {/* Google Drive & Payment Proofs Quick Audit Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-blue-200/90 bg-gradient-to-r from-blue-50/90 to-indigo-50/70 p-4 shadow-xs dark:border-blue-900/60 dark:from-blue-950/40 dark:to-indigo-950/30">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
+            <FileCheck className="h-5 w-5" />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+              Google Drive Payment Proofs & Finance Audit
+            </h4>
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              Folder: "Expense Manager Payment Proofs" • Verify receipts, match UPI transfers, and review audit discrepancies.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => onNavigateTab('payment-proofs')}
+          className="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors shrink-0"
+        >
+          <span>Open Payment Proofs</span>
+          <ArrowRight className="h-3.5 w-3.5" />
+        </button>
+      </div>
 
       {/* 6 Core Dashboard KPI Summary Cards with Staggered Entrance */}
       <div 

@@ -9,6 +9,7 @@ import { ReimbursementsPage } from './pages/ReimbursementsPage';
 import { TripsPage } from './pages/TripsPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { PaymentProofsPage } from './pages/PaymentProofsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ChatPage } from './pages/ChatPage';
 import { AuditLogPage } from './pages/AuditLogPage';
@@ -77,6 +78,15 @@ export function App() {
     notifications,
     markNotificationRead,
     markAllNotificationsRead,
+    paymentProofs,
+    googleDriveConfig,
+    driveFolderFiles,
+    addPaymentProof,
+    importDrivePaymentProofs,
+    reviewPaymentProof,
+    deletePaymentProof,
+    updateGoogleDriveConfig,
+    refreshDriveFolder,
   } = useExpenseData();
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -468,6 +478,7 @@ export function App() {
               onBulkDeleteExpenses={handleBulkDeleteExpenses}
               onDiscussExpense={openExpenseDiscussion}
               onNotify={addToast}
+              onNavigateTab={handleSelectTab}
               isManager={isManager}
             />
           )}
@@ -528,6 +539,28 @@ export function App() {
               activeTripId={activeTripId}
               onSelectTrip={setActiveTripId}
               onNotify={addToast}
+            />
+          )}
+
+          {/* Tab: Payment Proofs & Drive Audit */}
+          {activeTab === 'payment-proofs' && (
+            <PaymentProofsPage
+              paymentProofs={paymentProofs}
+              googleDriveConfig={googleDriveConfig}
+              driveFolderFiles={driveFolderFiles}
+              expenses={expenses}
+              reimbursements={reimbursements}
+              trips={trips}
+              currentUser={currentUser}
+              onAddProof={addPaymentProof}
+              onImportBatch={importDrivePaymentProofs}
+              onReviewProof={reviewPaymentProof}
+              onDeleteProof={deletePaymentProof}
+              onUpdateDriveConfig={updateGoogleDriveConfig}
+              onRefreshDriveFolder={refreshDriveFolder}
+              onDiscussExpense={openExpenseDiscussion}
+              onNotify={addToast}
+              isManager={isManager}
             />
           )}
 

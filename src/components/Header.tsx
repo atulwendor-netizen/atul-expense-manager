@@ -9,6 +9,7 @@ import {
   MapPin,
   Shield,
   Eye,
+  FileCheck,
 } from 'lucide-react';
 import { ReadOnlyBadge } from './ReadOnlyBadge';
 import { NotificationDropdown } from './NotificationDropdown';
@@ -98,6 +99,16 @@ export const Header: React.FC<HeaderProps> = ({
             ))}
           </select>
         </div>
+
+        {/* Payment Proofs Quick Shortcut */}
+        <button
+          onClick={() => onNavigateTab('payment-proofs')}
+          title="Payment Proofs & Drive Audit"
+          className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50/70 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300 transition-colors"
+        >
+          <FileCheck className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+          <span>Payment Proofs</span>
+        </button>
 
         {/* In-App Notifications Dropdown */}
         <NotificationDropdown

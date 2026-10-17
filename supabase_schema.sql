@@ -411,3 +411,100 @@ USING (user_id = auth.uid());
 CREATE POLICY "Notifications: Users can update own notifications (mark read)"
 ON public.notifications FOR UPDATE
 USING (user_id = auth.uid());
+
+-- ==============================================================================
+-- 5. GOOGLE DRIVE INTEGRATION & PAYMENT PROOFS AUDIT
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS public.google_drive_configs (
+    workspace_id UUID PRIMARY KEY REFERENCES public.workspaces(id) ON DELETE CASCADE,
+    client_id TEXT NOT NULL,
+    folder_id TEXT NOT NULL DEFAULT 'Expense Manager Payment Proofs',
+    folder_name TEXT NOT NULL DEFAULT 'Expense Manager Payment Proofs',
+    is_connected BOOLEAN NOT NULL DEFAULT true,
+    connected_account_email TEXT,
+    last_synced_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE TABLE IF NOT EXISTS public.payment_proofs (
+    id TEXT PRIMARY KEY,
+    workspace_id UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+    drive_file_id TEXT,
+    drive_link TEXT,
+    file_name TEXT NOT NULL,
+    file_type TEXT NOT NULL,
+    file_size BIGINT NOT NULL DEFAULT 0,
+    preview_url TEXT,
+    thumbnail_url TEXT,
+    trip_id TEXT REFERENCES public.trips(id) ON DELETE SET NULL,
+    trip_name TEXT,
+    expense_id TEXT REFERENCES public.expenses(id) ON DELETE SET NULL,
+    expense_description TEXT,
+    reimbursement_id TEXT REFERENCES public.reimbursements(id) ON DELETE SET NULL,
+    proof_type TEXT NOT NULL DEFAULT 'UPI Receipt',
+    payment_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    transaction_reference TEXT,
+    notes TEXT,
+    status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'verified', 'rejected', 'needs_clarification'
+    imported_by UUID NOT NULL REFERENCES public.profiles(id),
+    imported_by_name TEXT NOT NULL DEFAULT 'Atul',
+    imported_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    reviewed_by UUID REFERENCES public.profiles(id),
+    reviewed_by_name TEXT,
+    reviewed_by_role TEXT,
+    reviewed_at TIMESTAMPTZ,
+    review_notes TEXT,
+    is_flagged_duplicate BOOLEAN NOT NULL DEFAULT false,
+    duplicate_reason TEXT,
+    ocr_extracted_data JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+-- Indexes for fast audit lookups and duplicate detection
+CREATE INDEX IF NOT EXISTS idx_payment_proofs_workspace ON public.payment_proofs(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_payment_proofs_expense ON public.payment_proofs(expense_id);
+CREATE INDEX IF NOT EXISTS idx_payment_proofs_trip ON public.payment_proofs(trip_id);
+CREATE INDEX IF NOT EXISTS idx_payment_proofs_drive_file ON public.payment_proofs(drive_file_id);
+CREATE INDEX IF NOT EXISTS idx_payment_proofs_ref ON public.payment_proofs(transaction_reference);
+CREATE INDEX IF NOT EXISTS idx_payment_proofs_status ON public.payment_proofs(status);
+
+-- ------------------------------------------------------------------------------
+-- RLS POLICIES: GOOGLE DRIVE & PAYMENT PROOFS
+-- ------------------------------------------------------------------------------
+
+ALTER TABLE public.google_drive_configs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payment_proofs ENABLE ROW LEVEL SECURITY;
+
+-- Google Drive Config: Readable by all active members, configurable only by Owner
+CREATE POLICY "Drive Config: Members can view configuration"
+ON public.google_drive_configs FOR SELECT
+USING (public.is_active_workspace_member(workspace_id));
+
+CREATE POLICY "Drive Config: Owner has full management access"
+ON public.google_drive_configs FOR ALL
+USING (public.is_workspace_owner(workspace_id));
+
+-- Payment Proofs:
+-- 1. All active workspace members (Owner & Manager) can read proofs
+CREATE POLICY "Payment Proofs: Active members can view proofs"
+ON public.payment_proofs FOR SELECT
+USING (public.is_active_workspace_member(workspace_id));
+
+-- 2. Authenticated members can import proofs
+CREATE POLICY "Payment Proofs: Active members can import proofs"
+ON public.payment_proofs FOR INSERT
+WITH CHECK (public.is_active_workspace_member(workspace_id));
+
+-- 3. Both Owner and Manager (in Audit mode) can review/verify/reject proofs
+CREATE POLICY "Payment Proofs: Active members can audit and review proofs"
+ON public.payment_proofs FOR UPDATE
+USING (public.is_active_workspace_member(workspace_id));
+
+-- 4. Only Owner can permanently delete payment proof records
+CREATE POLICY "Payment Proofs: Only Owner can delete proofs"
+ON public.payment_proofs FOR DELETE
+USING (public.is_workspace_owner(workspace_id));

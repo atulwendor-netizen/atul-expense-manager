@@ -53,7 +53,7 @@ export interface AuditLogEntry {
   userEmail: string;
   userRole: UserRole;
   action: string;             // e.g. 'Created Expense', 'Edited Expense', 'Deleted Expense', 'Invited Manager', 'Revoked Access'
-  recordType: 'expense' | 'reimbursement' | 'trip' | 'user' | 'system' | 'invitation' | 'chat';
+  recordType: 'expense' | 'reimbursement' | 'trip' | 'user' | 'system' | 'invitation' | 'chat' | 'proof';
   recordId: string;
   previousValue: string | null; // Formatted summary or null
   newValue: string | null;      // Formatted summary or null

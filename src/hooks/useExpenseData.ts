@@ -12,8 +12,13 @@ import {
   ChatMessage,
   MessageAttachment,
   AppNotification,
+  PaymentProof,
+  PaymentProofStatus,
+  GoogleDriveConfig,
+  DriveFolderFile,
 } from '../types/index';
 import { backend } from '../services/backendService';
+import { initialGoogleDriveConfig } from '../data/initialPaymentProofs';
 import { calculateDashboardMetrics } from '../utils/calculations';
 
 export function useExpenseData() {
@@ -66,6 +71,7 @@ export function useExpenseData() {
         'reimbursements',
         'analytics',
         'reports',
+        'payment-proofs',
         'chat',
         'audit-log',
         'settings',
@@ -103,6 +109,7 @@ export function useExpenseData() {
         'reimbursements',
         'analytics',
         'reports',
+        'payment-proofs',
         'chat',
         'audit-log',
         'settings',
@@ -241,6 +248,31 @@ export function useExpenseData() {
     }
   });
 
+  // Google Drive & Payment Proofs State
+  const [paymentProofs, setPaymentProofs] = useState<PaymentProof[]>(() => {
+    try {
+      return backend.getPaymentProofs();
+    } catch {
+      return [];
+    }
+  });
+
+  const [googleDriveConfig, setGoogleDriveConfig] = useState<GoogleDriveConfig>(() => {
+    try {
+      return backend.getGoogleDriveConfig();
+    } catch {
+      return initialGoogleDriveConfig;
+    }
+  });
+
+  const [driveFolderFiles, setDriveFolderFiles] = useState<DriveFolderFile[]>(() => {
+    try {
+      return backend.getDriveFolderFiles();
+    } catch {
+      return [];
+    }
+  });
+
   const refreshState = useCallback(() => {
     try {
       setCurrentUser(backend.getCurrentUser());
@@ -256,6 +288,9 @@ export function useExpenseData() {
         setMessages(backend.getMessages(activeConversationId));
       }
       setNotifications(backend.getNotifications());
+      setPaymentProofs(backend.getPaymentProofs());
+      setGoogleDriveConfig(backend.getGoogleDriveConfig());
+      setDriveFolderFiles(backend.getDriveFolderFiles());
     } catch (e) {
       // If user is revoked
       setCurrentUser(backend.getCurrentUser());
@@ -475,6 +510,48 @@ export function useExpenseData() {
     refreshState();
   }, [refreshState]);
 
+  // Google Drive & Payment Proof Actions
+  const addPaymentProof = useCallback((data: Omit<PaymentProof, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const newProof = backend.addPaymentProof(data);
+    refreshState();
+    return newProof;
+  }, [refreshState]);
+
+  const importDrivePaymentProofs = useCallback((batch: Array<Omit<PaymentProof, 'id' | 'createdAt' | 'updatedAt'>>) => {
+    const res = backend.importDrivePaymentProofs(batch);
+    refreshState();
+    return res;
+  }, [refreshState]);
+
+  const reviewPaymentProof = useCallback((proofId: string, status: PaymentProofStatus, reviewNotes?: string) => {
+    const updated = backend.reviewPaymentProof(proofId, status, reviewNotes);
+    refreshState();
+    return updated;
+  }, [refreshState]);
+
+  const deletePaymentProof = useCallback((id: string) => {
+    backend.deletePaymentProof(id);
+    refreshState();
+  }, [refreshState]);
+
+  const updateGoogleDriveConfig = useCallback((partial: Partial<GoogleDriveConfig>) => {
+    const cfg = backend.updateGoogleDriveConfig(partial);
+    refreshState();
+    return cfg;
+  }, [refreshState]);
+
+  const refreshDriveFolder = useCallback(() => {
+    const res = backend.refreshDriveFolder();
+    refreshState();
+    return res;
+  }, [refreshState]);
+
+  // Missing proof expenses (for audit completeness)
+  const missingProofExpenses = useMemo(() => {
+    const proofExpenseIds = new Set(paymentProofs.map((p) => p.expenseId).filter(Boolean));
+    return expenses.filter((e) => e.status === 'valid' && !proofExpenseIds.has(e.id));
+  }, [expenses, paymentProofs]);
+
   return {
     currentUser,
     userRole,
@@ -532,5 +609,15 @@ export function useExpenseData() {
     notifications,
     markNotificationRead,
     markAllNotificationsRead,
+    paymentProofs,
+    googleDriveConfig,
+    driveFolderFiles,
+    addPaymentProof,
+    importDrivePaymentProofs,
+    reviewPaymentProof,
+    deletePaymentProof,
+    updateGoogleDriveConfig,
+    refreshDriveFolder,
+    missingProofExpenses,
   };
 }

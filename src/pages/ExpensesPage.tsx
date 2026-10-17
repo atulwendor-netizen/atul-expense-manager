@@ -17,6 +17,7 @@ import {
   FileSpreadsheet,
   FileText,
   ChevronDown,
+  FileCheck,
 } from 'lucide-react';
 
 interface ExpensesPageProps {
@@ -28,6 +29,7 @@ interface ExpensesPageProps {
   onBulkDeleteExpenses: (ids: string[]) => void;
   onDiscussExpense?: (expense: Expense) => void;
   onNotify: (type: 'success' | 'warning' | 'info' | 'error', text: string) => void;
+  onNavigateTab?: (tab: string) => void;
   isManager?: boolean;
 }
 
@@ -51,6 +53,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
   onBulkDeleteExpenses,
   onDiscussExpense,
   onNotify,
+  onNavigateTab,
   isManager = false,
 }) => {
   const [filters, setFilters] = useState<FilterState>(initialFilterState);
@@ -247,6 +250,17 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
               </div>
             )}
           </div>
+
+          {/* Payment Proofs Shortcut */}
+          {onNavigateTab && (
+            <button
+              onClick={() => onNavigateTab('payment-proofs')}
+              className="flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50/70 px-3.5 py-2 text-xs font-semibold text-blue-700 shadow-sm hover:bg-blue-100 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300 transition-colors"
+            >
+              <FileCheck className="h-4 w-4 text-blue-600" />
+              <span>Payment Proofs</span>
+            </button>
+          )}
 
           {/* Add Expense Primary Button (Owner only) */}
           {!isManager && (

@@ -203,7 +203,7 @@ export const ExpenseDetailsModal: React.FC<ExpenseDetailsModalProps> = ({
                 </div>
 
                 {/* Image preview if image */}
-                {expense.receipt.startsWith('data:image') && (
+                {(expense.receipt.startsWith('data:image') || expense.receipt.startsWith('http')) && (
                   <div className="max-h-48 overflow-hidden rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
                     <img
                       src={expense.receipt}
