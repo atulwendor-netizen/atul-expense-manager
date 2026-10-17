@@ -36,31 +36,34 @@ To connect your Google Drive account, configure the official OAuth 2.0 credentia
 5. **Create OAuth 2.0 Web Application Credentials**:
    - Navigate to **APIs & Services > Credentials > Create Credentials > OAuth client ID**.
    - Application type: **Web application**.
-   - Name: `Atul Expense Manager Server Client`.
+   - Name: `Atul Expense Manager Web Client`.
    - **Authorized JavaScript origins**:
      - `http://localhost:5173` (local development)
-     - `https://<your-app>.vercel.app` (production)
+     - `https://atul-expense-manager.vercel.app` (production)
    - **Authorized redirect URIs**:
      - `http://localhost:5173/api/auth/google/callback` (local development)
-     - `https://<your-app>.vercel.app/api/auth/google/callback` (production)
+     - `https://atul-expense-manager.vercel.app/api/auth/google/callback` (production)
    - Copy the generated **Client ID** and **Client Secret**.
 
-6. **Server-Side Environment Variables**:
-   Add the following variables to your local `.env` file or Vercel Environment Variables:
+6. **Server-Side Environment Variables on Vercel**:
+   Add the following variables to **Vercel Project Settings > Environment Variables** (for Production & Preview environments):
    ```env
-   GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
-   GOOGLE_CLIENT_SECRET=GOCSPX-your-client-secret
-   GOOGLE_REDIRECT_URI=http://localhost:5173/api/auth/google/callback
+   GOOGLE_CLIENT_ID=<your-google-client-id>.apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=<your-google-client-secret>
+   GOOGLE_REDIRECT_URI=https://atul-expense-manager.vercel.app/api/auth/google/callback
    ```
    > [!IMPORTANT]
-   > The `GOOGLE_CLIENT_SECRET` is stored strictly on the server and is never exposed to the frontend or bundled into client JavaScript.
+   > The `GOOGLE_CLIENT_SECRET` is stored strictly on the server/Vercel serverless functions and is never exposed to the frontend or bundled into client JavaScript.
+   > If your OAuth app status in Google Cloud Console is in **Testing** mode, make sure your Google account email is added under **OAuth consent screen > Test users**.
 
-7. **OAuth Flow & Token Security Architecture**:
-   - **Initiate**: The user clicks **Authorize Drive** or **Authorize with Google**, which redirects to `/api/auth/google/url?redirect=true` or initiates the official Google OAuth consent screen with `access_type=offline` and `prompt=consent`.
-   - **Callback**: Google redirects to `/api/auth/google/callback?code=...`. The server securely exchanges the code for `access_token` and `refresh_token`, fetches the user's email via the Google `userinfo` API, and persists credentials to `.data/google_drive_tokens.json` with restricted `0o600` permissions.
-   - **Token Refresh**: The server transparently refreshes expired access tokens using the stored `refresh_token` without prompting the user.
-   - **Revocation**: Clicking **Disconnect Account** revokes the tokens via `https://oauth2.googleapis.com/revoke` and purges the local server session.
-   - **Role Protection (RBAC)**: All Google Drive import and authorization controls are restricted from the Manager/Auditor role (`isManager`). Auditors can inspect and verify linked proofs but cannot authorize accounts or import records.
+7. **OAuth Flow & Serverless Stateless Architecture**:
+   - **Stateless Serverless Session (`HttpOnly` Cookie)**: Vercel serverless lambdas run on ephemeral, read-only containers (`EROFS`). To support zero-configuration serverless persistence without requiring an external database, the authorization tokens are encrypted using **AES-256-GCM** with the server's `GOOGLE_CLIENT_SECRET` and stored in an `HttpOnly`, `SameSite=Lax` secure session cookie (`gdrive_session`).
+   - **CSRF Protection via HMAC-SHA256 State**: Every authorization URL includes a cryptographically signed HMAC-SHA256 `state` token containing a unique nonce, redirect return path, and 15-minute expiration timestamp to block cross-site request forgery attacks.
+   - **Initiate**: The user clicks **Authorize Drive**, which queries `/api/auth/google/url`, generating the Google OAuth consent URL with `access_type=offline`, `prompt=consent`, and signed CSRF state.
+   - **Callback**: Google redirects to `/api/auth/google/callback?code=...&state=...`. The server verifies the CSRF state, securely exchanges the authorization code for `access_token` and `refresh_token`, and issues the encrypted `Set-Cookie: gdrive_session=...; HttpOnly; Path=/` before redirecting the user back to `/payment-proofs?gdrive_auth=success`.
+   - **Automatic Token Refresh**: The server transparently refreshes expired access tokens using the stored `refresh_token` and sets an updated encrypted session cookie.
+   - **Revocation**: Clicking **Disconnect Account** revokes the tokens via `https://oauth2.googleapis.com/revoke`, clears the session cookie (`Max-Age=0`), and purges any temporary cached tokens.
+   - **Role Protection (RBAC)**: All Google Drive import and authorization controls are restricted from the Manager/Auditor role (`isManager`). Both frontend controls and serverless endpoints enforce 403 Forbidden on Audit role mutations.
 
 ---
 
