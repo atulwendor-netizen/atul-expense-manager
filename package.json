@@ -7,16 +7,21 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "node scripts/verify-rbac-production.js"
+    "test": "node scripts/verify-rbac-production.js",
+    "test:nexa": "node scripts/verify-nexa-production.js",
+    "test:all": "npm run test && npm run test:nexa"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
+    "@types/three": "^0.186.0",
     "clsx": "^2.1.1",
+    "gsap": "^3.15.0",
     "lucide-react": "^1.16.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^2.13.0",
     "tailwind-merge": "^2.5.4",
+    "three": "^0.186.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

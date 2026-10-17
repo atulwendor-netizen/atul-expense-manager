@@ -21,7 +21,8 @@ import { SignInModal } from './components/SignInModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { Expense, Reimbursement, Trip } from './types/index';
 import { calculateDashboardMetrics } from './utils/calculations';
-import { Ban, LogIn } from 'lucide-react';
+import { Ban, LogIn, Sparkles } from 'lucide-react';
+import { NexaLandingPage } from './nexa/NexaLandingPage';
 
 export function App() {
   const {
@@ -90,6 +91,27 @@ export function App() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isSignInModalOpen, setIsSignInModalOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [viewMode, setViewMode] = useState<'landing' | 'workspace'>(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname.toLowerCase();
+      const params = new URLSearchParams(window.location.search);
+      if (
+        path === '/app' ||
+        path === '/workspace' ||
+        path === '/portal' ||
+        path === '/login' ||
+        path === '/signin' ||
+        path === '/access' ||
+        params.get('view') === 'workspace' ||
+        params.get('portal') ||
+        params.get('login') ||
+        params.get('email')
+      ) {
+        return 'workspace';
+      }
+    }
+    return 'landing';
+  });
 
   // Toast notification helper
   const addToast = useCallback((type: 'success' | 'warning' | 'info' | 'error', text: string) => {
@@ -145,6 +167,7 @@ export function App() {
         params.get('master') === 'true';
 
       if (inviteEmail) {
+        setViewMode('workspace');
         const cleanEmail = inviteEmail.trim().toLowerCase();
         const res = loginWithCredentials(cleanEmail);
         if (res.success && res.user) {
@@ -153,8 +176,9 @@ export function App() {
             `Welcome! Logged in as ${res.user.role === 'owner' ? 'Owner' : 'Manager / Auditor'} (${cleanEmail}) in ${res.user.role === 'owner' ? 'Full Access' : 'Read-Only Audit Mode'}.`
           );
         }
-        window.history.replaceState({}, document.title, '/');
+        window.history.replaceState({}, document.title, '/?view=workspace');
       } else if (roleParam === 'manager') {
+        setViewMode('workspace');
         const res = loginWithCredentials('manager@email.com');
         if (res.success && res.user) {
           addToast(
@@ -162,14 +186,36 @@ export function App() {
             'Welcome! Logged in as Manager / Auditor in Read-Only Audit Mode.'
           );
         }
-        window.history.replaceState({}, document.title, '/');
+        window.history.replaceState({}, document.title, '/?view=workspace');
       } else if (isMasterPortalRoute) {
+        setViewMode('workspace');
         setIsSignInModalOpen(true);
       }
     } catch {
       // Fallback
     }
   }, [loginWithCredentials, addToast]);
+
+  // Synchronize history navigation between landing page and workspace
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handlePop = () => {
+      const path = window.location.pathname.toLowerCase();
+      const params = new URLSearchParams(window.location.search);
+      if (
+        path === '/app' ||
+        path === '/workspace' ||
+        path === '/portal' ||
+        params.get('view') === 'workspace'
+      ) {
+        setViewMode('workspace');
+      } else {
+        setViewMode('landing');
+      }
+    };
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, []);
 
   // Global search filter for Dashboard
   const searchedExpenses = useMemo(() => {
@@ -383,6 +429,19 @@ export function App() {
           onNotify={addToast}
         />
       </div>
+    );
+  }
+
+  if (viewMode === 'landing') {
+    return (
+      <NexaLandingPage
+        onLaunchPlatform={() => {
+          setViewMode('workspace');
+          if (typeof window !== 'undefined') {
+            window.history.pushState({}, '', '?view=workspace');
+          }
+        }}
+      />
     );
   }
 
@@ -648,6 +707,22 @@ export function App() {
         onNotify={addToast}
         isMandatory={!isAuthenticated}
       />
+
+      {/* Floating shortcut to return to Nexa Landing page */}
+      <div className="fixed bottom-4 right-4 z-40">
+        <button
+          onClick={() => {
+            setViewMode('landing');
+            if (typeof window !== 'undefined') {
+              window.history.pushState({}, '', '/');
+            }
+          }}
+          className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-900/95 hover:bg-slate-800 text-blue-400 hover:text-blue-300 border border-blue-500/30 shadow-2xl backdrop-blur-md text-xs font-mono transition-all hover:scale-105"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+          <span>Nexa AI Landing Page</span>
+        </button>
+      </div>
 
       {/* Toast Notification Container */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
