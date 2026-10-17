@@ -75,7 +75,7 @@ export const DriveImportModal: React.FC<DriveImportModalProps> = ({
   googleDriveConfig,
   onImportBatch,
   onRefreshFolder,
-  isManager: _isManager = false,
+  isManager = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'browse' | 'direct_link'>('browse');
   const [selectedFolder, setSelectedFolder] = useState<string>('all');
@@ -263,6 +263,7 @@ export const DriveImportModal: React.FC<DriveImportModalProps> = ({
   };
 
   const handleSubmitImport = () => {
+    if (isManager) return;
     const proofsToImport: Array<Omit<PaymentProof, 'id' | 'createdAt' | 'updatedAt'>> = [];
 
     if (activeTab === 'browse') {
@@ -809,19 +810,25 @@ export const DriveImportModal: React.FC<DriveImportModalProps> = ({
             Cancel
           </button>
 
-          <button
-            type="button"
-            onClick={handleSubmitImport}
-            disabled={activeTab === 'browse' ? selectedFileIds.size === 0 : !directLinkInput.trim()}
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white hover:bg-blue-700 shadow-sm transition-colors disabled:opacity-50"
-          >
-            <Upload className="h-4 w-4" />
-            <span>
-              {activeTab === 'browse'
-                ? `Import Selected Proofs (${selectedFileIds.size})`
-                : 'Import Direct Drive Link'}
+          {!isManager ? (
+            <button
+              type="button"
+              onClick={handleSubmitImport}
+              disabled={activeTab === 'browse' ? selectedFileIds.size === 0 : !directLinkInput.trim()}
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white hover:bg-blue-700 shadow-sm transition-colors disabled:opacity-50"
+            >
+              <Upload className="h-4 w-4" />
+              <span>
+                {activeTab === 'browse'
+                  ? `Import Selected Proofs (${selectedFileIds.size})`
+                  : 'Import Direct Drive Link'}
+              </span>
+            </button>
+          ) : (
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              Importing restricted in Audit Mode
             </span>
-          </button>
+          )}
         </div>
       </div>
     </div>

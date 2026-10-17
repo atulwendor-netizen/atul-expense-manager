@@ -17,6 +17,7 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+.data/
 
 # IDE and OS files
 .DS_Store

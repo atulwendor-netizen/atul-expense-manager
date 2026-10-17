@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   PaymentProof,
   PaymentProofStatus,
@@ -36,6 +36,7 @@ import {
   ChevronDown,
   ChevronUp,
   Image as ImageIcon,
+  Lock,
 } from 'lucide-react';
 import { DriveFileViewerModal } from '../components/DriveFileViewerModal';
 import {
@@ -45,6 +46,9 @@ import {
   isPdfFile,
   fetchGoogleDriveFolderFiles,
   getDriveWebLink,
+  checkGoogleAuthStatus,
+  getGoogleAuthUrl,
+  GoogleAuthStatus,
 } from '../utils/googleDrive';
 import { backend } from '../services/backendService';
 
@@ -113,6 +117,71 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
   const [activeViewerFile, setActiveViewerFile] = useState<DriveFolderFile | null>(null);
   const [fileFilter, setFileFilter] = useState<'all' | 'images' | 'pdfs'>('all');
   const [isFolderExpanded, setIsFolderExpanded] = useState<boolean>(true);
+  const [serverAuthStatus, setServerAuthStatus] = useState<GoogleAuthStatus | null>(null);
+  const [isAuthorizing, setIsAuthorizing] = useState<boolean>(false);
+
+  // Monitor Google OAuth Status & OAuth callback redirect parameters
+  useEffect(() => {
+    // 1. Fetch server-side OAuth status
+    checkGoogleAuthStatus().then((status) => {
+      setServerAuthStatus(status);
+      if (status.isConnected && status.connectedEmail) {
+        onUpdateDriveConfig({
+          isConnected: true,
+          connectedAccountEmail: status.connectedEmail,
+        });
+      }
+    });
+
+    // 2. Check for redirect query parameters from Google OAuth callback
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const gdriveAuth = urlParams.get('gdrive_auth');
+      if (gdriveAuth === 'success') {
+        const account = urlParams.get('account') || 'Google Account';
+        onNotify('success', `Google Drive authorized successfully as ${account}!`);
+        onUpdateDriveConfig({
+          isConnected: true,
+          connectedAccountEmail: account,
+          lastSyncedAt: new Date().toISOString(),
+        });
+        setLinkImportError(null);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (gdriveAuth === 'error') {
+        const errorMsg = urlParams.get('message') || 'Google Drive authorization was not completed.';
+        setLinkImportError(errorMsg);
+        onNotify('error', `Google Drive authorization error: ${errorMsg}`);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+  }, []);
+
+  // Initiate real Google OAuth 2.0 flow
+  const handleAuthorizeDrive = async () => {
+    if (isManager) {
+      onNotify('warning', 'Google Drive authorization is restricted in Audit mode.');
+      return;
+    }
+
+    setIsAuthorizing(true);
+    try {
+      const authInfo = await getGoogleAuthUrl(window.location.pathname);
+      if (authInfo.isConfigured && authInfo.url) {
+        onNotify('info', 'Redirecting to Google for OAuth authorization...');
+        window.location.href = authInfo.url;
+      } else {
+        setIsConfigModalOpen(true);
+        const missingList = authInfo.missing?.join(', ') || 'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET';
+        const msg = `Google Cloud OAuth credentials not configured on server: ${missingList}. Please configure your .env file or server environment.`;
+        setLinkImportError(msg);
+        onNotify('warning', msg);
+      }
+    } catch (err: any) {
+      onNotify('error', err?.message || 'Failed to initiate Google authorization.');
+    } finally {
+      setIsAuthorizing(false);
+    }
+  };
 
   // Filtered folder files for gallery
   const filteredDriveFiles = useMemo(() => {
@@ -361,8 +430,14 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
               {paymentProofs.length} records
             </span>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Dedicated Google Drive folder: <span className="font-semibold text-slate-700 dark:text-slate-300">"{googleDriveConfig.folderName}"</span> • Finance & Manager side-by-side verification
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+            <span>Dedicated Google Drive folder: <span className="font-semibold text-slate-700 dark:text-slate-300">"{googleDriveConfig.folderName}"</span></span>
+            {serverAuthStatus?.isConnected && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-[10px] font-semibold">
+                <CheckCircle2 className="h-3 w-3" /> {serverAuthStatus.connectedEmail || 'OAuth Connected'}
+              </span>
+            )}
+            <span>• Finance & Manager side-by-side verification</span>
           </p>
         </div>
 
@@ -387,14 +462,16 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
             <span>{isRefreshing ? 'Syncing...' : 'Sync Drive'}</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => setIsImportModalOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-blue-500/20 hover:bg-blue-700 transition-colors"
-          >
-            <Upload className="h-4 w-4" />
-            <span>Import Proofs</span>
-          </button>
+          {!isManager && (
+            <button
+              type="button"
+              onClick={() => setIsImportModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-blue-500/20 hover:bg-blue-700 transition-colors"
+            >
+              <Upload className="h-4 w-4" />
+              <span>Import Proofs</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -445,25 +522,37 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
             <LinkIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
               type="text"
+              disabled={isManager || isImportingLink}
               value={folderLinkInput}
               onChange={(e) => {
                 setFolderLinkInput(e.target.value);
                 if (linkImportError) setLinkImportError(null);
               }}
-              placeholder="Paste Google Drive folder link (e.g. https://drive.google.com/drive/folders/...) or file link"
-              className="w-full rounded-xl border border-slate-300/80 bg-white py-2.5 pl-10 pr-4 text-xs font-medium text-slate-900 placeholder-slate-400 shadow-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              placeholder={
+                isManager
+                  ? 'Audit Mode: Google Drive folder link (Read-only view)'
+                  : 'Paste Google Drive folder link (e.g. https://drive.google.com/drive/folders/...) or file link'
+              }
+              className="w-full rounded-xl border border-slate-300/80 bg-white py-2.5 pl-10 pr-4 text-xs font-medium text-slate-900 placeholder-slate-400 shadow-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white disabled:opacity-70 disabled:cursor-not-allowed"
             />
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="submit"
-              disabled={isImportingLink}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm shadow-blue-500/20 hover:bg-blue-700 disabled:opacity-50 transition-colors"
-            >
-              <FolderDown className={`h-4 w-4 ${isImportingLink ? 'animate-bounce' : ''}`} />
-              <span>{isImportingLink ? 'Importing...' : 'Import / View'}</span>
-            </button>
+            {!isManager ? (
+              <button
+                type="submit"
+                disabled={isImportingLink}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm shadow-blue-500/20 hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                <FolderDown className={`h-4 w-4 ${isImportingLink ? 'animate-bounce' : ''}`} />
+                <span>{isImportingLink ? 'Importing...' : 'Import / View'}</span>
+              </button>
+            ) : (
+              <span className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 px-3.5 py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                <Lock className="h-3.5 w-3.5 text-amber-500" />
+                <span>Audit Mode</span>
+              </span>
+            )}
 
             <button
               type="button"
@@ -486,17 +575,25 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
               <div>
                 <p className="font-semibold">{linkImportError}</p>
                 <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-0.5">
-                  Private Google Drive folders require authorized Google credentials. Please connect your Google account or provide an OAuth Access Token.
+                  Private Google Drive folders require authorized Google credentials. Please connect your Google account with read-only access.
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setIsConfigModalOpen(true)}
-              className="self-start sm:self-auto shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700 shadow-xs"
-            >
-              <span>Authorize Drive</span>
-            </button>
+            {!isManager ? (
+              <button
+                type="button"
+                disabled={isAuthorizing}
+                onClick={handleAuthorizeDrive}
+                className="self-start sm:self-auto shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-50 shadow-xs transition-colors"
+              >
+                <HardDrive className="h-3.5 w-3.5" />
+                <span>{isAuthorizing ? 'Connecting...' : 'Authorize Drive'}</span>
+              </button>
+            ) : (
+              <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-300">
+                Auditor View: Authorization is managed by Account Owner.
+              </span>
+            )}
           </div>
         )}
 
@@ -545,17 +642,19 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
               </div>
 
               {/* Upload simulation button to test newly added files and refresh */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleSimulateNewUpload}
-                  title="Simulate adding a new file to Drive to test the Refresh feature"
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>Simulate New Upload</span>
-                </button>
-              </div>
+              {!isManager && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSimulateNewUpload}
+                    title="Simulate adding a new file to Drive to test the Refresh feature"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Simulate New Upload</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Files Grid */}
@@ -1212,6 +1311,7 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
         file={activeViewerFile}
         isOpen={Boolean(activeViewerFile)}
         onClose={() => setActiveViewerFile(null)}
+        isManager={isManager}
         onLinkToProof={(_file) => {
           setIsImportModalOpen(true);
         }}

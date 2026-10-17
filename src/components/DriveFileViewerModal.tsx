@@ -16,6 +16,7 @@ interface DriveFileViewerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onLinkToProof?: (file: DriveFolderFile) => void;
+  isManager?: boolean;
 }
 
 export const DriveFileViewerModal: React.FC<DriveFileViewerModalProps> = ({
@@ -23,6 +24,7 @@ export const DriveFileViewerModal: React.FC<DriveFileViewerModalProps> = ({
   isOpen,
   onClose,
   onLinkToProof,
+  isManager = false,
 }) => {
   if (!isOpen || !file) return null;
 
@@ -153,7 +155,7 @@ export const DriveFileViewerModal: React.FC<DriveFileViewerModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2.5">
-            {onLinkToProof && (
+            {onLinkToProof && !isManager && (
               <button
                 type="button"
                 onClick={() => {

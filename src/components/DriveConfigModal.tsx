@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GoogleDriveConfig } from '../types/index';
 import {
   X,
@@ -10,7 +10,14 @@ import {
   Key,
   Check,
   Lock,
+  AlertTriangle,
 } from 'lucide-react';
+import {
+  checkGoogleAuthStatus,
+  getGoogleAuthUrl,
+  disconnectGoogleAccount,
+  GoogleAuthStatus,
+} from '../utils/googleDrive';
 
 interface DriveConfigModalProps {
   isOpen: boolean;
@@ -35,10 +42,63 @@ export const DriveConfigModal: React.FC<DriveConfigModalProps> = ({
   const [accessToken, setAccessToken] = useState(config.accessToken || '');
   const [folderUrl, setFolderUrl] = useState(config.folderUrl || '');
   const [isConnected, setIsConnected] = useState(config.isConnected);
+  const [connectedEmail, setConnectedEmail] = useState(config.connectedAccountEmail || 'Atul.wendor@gmail.com');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [serverAuthStatus, setServerAuthStatus] = useState<GoogleAuthStatus | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      checkGoogleAuthStatus().then((status) => {
+        setServerAuthStatus(status);
+        if (status.isConnected) {
+          setIsConnected(true);
+          if (status.connectedEmail) {
+            setConnectedEmail(status.connectedEmail);
+          }
+        }
+      });
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const handleConnectOAuth = async () => {
+    setIsConnecting(true);
+    setActionError(null);
+    try {
+      const authInfo = await getGoogleAuthUrl(window.location.pathname);
+      if (authInfo.isConfigured && authInfo.url) {
+        window.location.href = authInfo.url;
+      } else {
+        const missing = authInfo.missing?.join(', ') || 'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET';
+        setActionError(`Server missing required Google Cloud credentials: ${missing}. Please add them to your .env file.`);
+      }
+    } catch (err: any) {
+      setActionError(err?.message || 'Error connecting to Google OAuth.');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleDisconnectOAuth = async () => {
+    setIsDisconnecting(true);
+    setActionError(null);
+    try {
+      await disconnectGoogleAccount();
+      setIsConnected(false);
+      setConnectedEmail('');
+      onSaveConfig({ isConnected: false, connectedAccountEmail: undefined });
+      onRefreshFolder();
+    } catch (err: any) {
+      setActionError(err?.message || 'Error disconnecting account.');
+    } finally {
+      setIsDisconnecting(false);
+    }
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,6 +109,7 @@ export const DriveConfigModal: React.FC<DriveConfigModalProps> = ({
       accessToken: accessToken.trim() || undefined,
       folderUrl: folderUrl.trim() || undefined,
       isConnected,
+      connectedAccountEmail: connectedEmail || undefined,
     });
     setSavedSuccess(true);
     setTimeout(() => {
@@ -102,6 +163,40 @@ export const DriveConfigModal: React.FC<DriveConfigModalProps> = ({
 
         {/* Content Form */}
         <form onSubmit={handleSave} className="p-6 space-y-5">
+          {/* Action Error Banner if any */}
+          {actionError && (
+            <div className="rounded-xl border border-rose-300 bg-rose-50/90 p-3.5 text-xs text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200 flex items-start gap-2.5">
+              <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold">{actionError}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Configuration Required Banner if server is missing env credentials */}
+          {serverAuthStatus && !serverAuthStatus.isConfigured && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/40 p-4 space-y-2.5 text-xs text-amber-900 dark:text-amber-200">
+              <div className="flex items-center gap-2 font-bold text-amber-800 dark:text-amber-200">
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                <span>Google Cloud OAuth Setup Required</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-amber-800/90 dark:text-amber-300">
+                To connect your Google Drive account, provide your Google Cloud OAuth credentials in your local <code className="font-mono font-bold bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded">.env</code> file or server environment:
+              </p>
+              <div className="rounded-lg bg-amber-100/80 dark:bg-amber-900/40 p-2.5 font-mono text-[11px] text-amber-950 dark:text-amber-100 space-y-1 select-all">
+                <div>GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com</div>
+                <div>GOOGLE_CLIENT_SECRET=GOCSPX-your-client-secret</div>
+                <div>GOOGLE_REDIRECT_URI={serverAuthStatus.redirectUri || `${typeof window !== 'undefined' ? window.location.origin : ''}/api/auth/google/callback`}</div>
+              </div>
+              <div className="text-[11px] text-amber-800/90 dark:text-amber-300">
+                <span className="font-semibold">Google Cloud Redirect URI: </span>
+                <code className="font-mono text-[11px] text-amber-950 dark:text-amber-100 bg-white/60 dark:bg-black/20 px-1 rounded">
+                  {serverAuthStatus.redirectUri || `${typeof window !== 'undefined' ? window.location.origin : ''}/api/auth/google/callback`}
+                </code>
+              </div>
+            </div>
+          )}
+
           {/* Active Folder Status */}
           <div className="rounded-xl bg-gradient-to-br from-blue-50/70 to-indigo-50/40 dark:from-blue-950/30 dark:to-indigo-950/20 p-4 border border-blue-100 dark:border-blue-900/40 space-y-3">
             <div className="flex items-center justify-between">
@@ -131,7 +226,7 @@ export const DriveConfigModal: React.FC<DriveConfigModalProps> = ({
               <div>
                 <span className="text-slate-400 dark:text-slate-500 block">Connected Account</span>
                 <span className="font-medium font-mono text-slate-800 dark:text-slate-200">
-                  {config.connectedAccountEmail || 'Atul.wendor@gmail.com'}
+                  {connectedEmail || config.connectedAccountEmail || 'Not Connected'}
                 </span>
               </div>
               <div>
@@ -280,25 +375,34 @@ export const DriveConfigModal: React.FC<DriveConfigModalProps> = ({
 
             {!isManager && (
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsConnected(!isConnected)}
-                  className={`rounded-xl px-3.5 py-2 text-xs font-semibold border transition-colors ${
-                    isConnected
-                      ? 'border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-400'
-                      : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50 dark:border-emerald-900/60 dark:text-emerald-400'
-                  }`}
-                >
-                  {isConnected ? 'Disconnect' : 'Connect Account'}
-                </button>
+                {isConnected ? (
+                  <button
+                    type="button"
+                    onClick={handleDisconnectOAuth}
+                    disabled={isDisconnecting}
+                    className="rounded-xl px-3.5 py-2 text-xs font-semibold border border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-400 disabled:opacity-50 transition-colors"
+                  >
+                    {isDisconnecting ? 'Disconnecting...' : 'Disconnect Account'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleConnectOAuth}
+                    disabled={isConnecting}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-blue-700 shadow-sm disabled:opacity-50 transition-colors"
+                  >
+                    <HardDrive className="h-3.5 w-3.5" />
+                    <span>{isConnecting ? 'Connecting...' : 'Authorize with Google'}</span>
+                  </button>
+                )}
 
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 shadow-sm transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 shadow-xs transition-colors"
                 >
                   {savedSuccess ? (
                     <>
-                      <Check className="h-3.5 w-3.5" />
+                      <Check className="h-3.5 w-3.5 text-emerald-600" />
                       Saved!
                     </>
                   ) : (

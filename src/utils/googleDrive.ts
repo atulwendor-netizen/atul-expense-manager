@@ -115,21 +115,159 @@ export interface FetchFolderResult {
   source: 'live_api' | 'authorized_cache' | 'simulated';
 }
 
+export interface GoogleAuthStatus {
+  isConnected: boolean;
+  connectedEmail?: string;
+  expiresAt?: number;
+  scope?: string;
+  isConfigured: boolean;
+  missingConfig?: string[];
+  redirectUri: string;
+  clientIdMasked?: string;
+}
+
 /**
- * Fetches files from Google Drive API v3 or uses authorized folder cache.
+ * Check Google OAuth status from the secure server endpoint
+ */
+export async function checkGoogleAuthStatus(): Promise<GoogleAuthStatus> {
+  try {
+    const res = await fetch('/api/auth/google/status');
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('[GoogleAuth] Could not check status via /api/auth/google/status:', err);
+  }
+  return {
+    isConnected: false,
+    isConfigured: false,
+    missingConfig: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
+    redirectUri: typeof window !== 'undefined' ? `${window.location.origin}/api/auth/google/callback` : '',
+  };
+}
+
+/**
+ * Fetch Google OAuth 2.0 authorization URL from server
+ */
+export async function getGoogleAuthUrl(returnTo = '/payment-proofs'): Promise<{
+  url: string;
+  isConfigured: boolean;
+  missing?: string[];
+  redirectUri?: string;
+  message?: string;
+}> {
+  try {
+    const res = await fetch(`/api/auth/google/url?returnTo=${encodeURIComponent(returnTo)}`);
+    const data = await res.json();
+    if (res.ok && data.url) {
+      return { url: data.url, isConfigured: true, redirectUri: data.redirectUri };
+    }
+    return {
+      url: '',
+      isConfigured: false,
+      missing: data.missing || ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
+      redirectUri: data.redirectUri,
+      message: data.message,
+    };
+  } catch (err: any) {
+    return {
+      url: '',
+      isConfigured: false,
+      missing: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
+      message: err.message,
+    };
+  }
+}
+
+/**
+ * Disconnect Google Drive account via server endpoint
+ */
+export async function disconnectGoogleAccount(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/auth/google/disconnect', { method: 'POST' });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Fetches files from Google Drive API v3 via server endpoint or authorized cache.
  * If authentication is missing on a private folder, returns clear error explaining how to connect.
  */
 export async function fetchGoogleDriveFolderFiles(
   folderId: string,
   config: Partial<GoogleDriveConfig> = {}
 ): Promise<FetchFolderResult> {
-  const { apiKey, accessToken } = config;
+  // 1. First, attempt to fetch via the secure server-side Google Drive API endpoint
+  try {
+    const res = await fetch(`/api/drive/files?folderId=${encodeURIComponent(folderId)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.files)) {
+        return {
+          success: true,
+          folderId,
+          files: data.files,
+          isAuthorized: true,
+          source: 'live_api',
+        };
+      }
+    } else {
+      const errorData = await res.json().catch(() => ({}));
+      const errorMsg = errorData.errorMessage || errorData.message;
 
-  // 1. If an OAuth access token or Google API key is provided, attempt live Google Drive v3 REST call
+      if (res.status === 401) {
+        return {
+          success: false,
+          folderId,
+          files: [],
+          isAuthorized: false,
+          errorMessage:
+            errorMsg ||
+            'Google Drive Authentication Required: Folder cannot be read without authorization. Please click "Authorize Drive" to connect your Google account.',
+          source: 'live_api',
+        };
+      }
+
+      if (res.status === 403) {
+        return {
+          success: false,
+          folderId,
+          files: [],
+          isAuthorized: true,
+          errorMessage:
+            errorMsg ||
+            `Access Denied (403): The connected Google account does not have permission to view folder "${folderId}". Please share the folder with this account in Google Drive.`,
+          source: 'live_api',
+        };
+      }
+
+      if (res.status === 404) {
+        return {
+          success: false,
+          folderId,
+          files: [],
+          isAuthorized: true,
+          errorMessage:
+            errorMsg ||
+            `Google Drive folder not found (404). Please verify that folder ID "${folderId}" is correct.`,
+          source: 'live_api',
+        };
+      }
+    }
+  } catch (err: any) {
+    console.warn('[GoogleDrive] Direct API route call error, checking fallbacks:', err);
+  }
+
+  // 2. Client-side direct access token / API key fallback (if configured)
+  const { apiKey, accessToken } = config;
   if (accessToken || apiKey) {
     try {
       const query = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
-      const fields = encodeURIComponent('files(id, name, mimeType, size, webViewLink, webContentLink, thumbnailLink, modifiedTime)');
+      const fields = encodeURIComponent(
+        'files(id, name, mimeType, size, webViewLink, webContentLink, thumbnailLink, modifiedTime)'
+      );
       let url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&pageSize=100`;
 
       if (apiKey && !accessToken) {
@@ -164,47 +302,12 @@ export async function fetchGoogleDriveFolderFiles(
           source: 'live_api',
         };
       }
-
-      // Handle common Google Drive API errors
-      if (response.status === 401) {
-        return {
-          success: false,
-          folderId,
-          files: [],
-          isAuthorized: false,
-          errorMessage: 'Google Drive authorization token is invalid or expired. Please reconnect your Google account.',
-          source: 'live_api',
-        };
-      }
-
-      if (response.status === 403) {
-        return {
-          success: false,
-          folderId,
-          files: [],
-          isAuthorized: false,
-          errorMessage: 'Permission Denied (403): Cannot access this Google Drive folder. If the folder is private, your authorized Google account must be granted Viewer access. Note: Payment proofs do not need to be public.',
-          source: 'live_api',
-        };
-      }
-
-      if (response.status === 404) {
-        return {
-          success: false,
-          folderId,
-          files: [],
-          isAuthorized: true,
-          errorMessage: `Google Drive folder not found (404). Please verify that folder ID "${folderId}" is correct.`,
-          source: 'live_api',
-        };
-      }
-    } catch (err: any) {
-      // Network failure or CORS block when calling Google Drive API directly without backend proxy
-      console.warn('Direct Google Drive API call encountered network error:', err);
+    } catch {
+      // Continue to local folder cache check
     }
   }
 
-  // 2. If configured folder or default demo folder matches:
+  // 3. If configured folder or default demo folder matches:
   // Return pre-configured high-fidelity files for the application's authorized folder
   if (
     folderId === 'folder-gdrive-payment-proofs-2026' ||
@@ -212,7 +315,6 @@ export async function fetchGoogleDriveFolderFiles(
     folderId.includes('service-visit') ||
     folderId === config.folderId
   ) {
-    // Check if custom files exist in local storage
     const customKey = `gdrive_custom_files_${folderId}`;
     let customFiles: DriveFolderFile[] = [];
     try {
@@ -223,7 +325,6 @@ export async function fetchGoogleDriveFolderFiles(
     }
 
     const merged = [...initialDriveFolderFiles, ...customFiles];
-    // Deduplicate by ID
     const uniqueMap = new Map<string, DriveFolderFile>();
     merged.forEach((f) => uniqueMap.set(f.id, f));
 
@@ -236,16 +337,13 @@ export async function fetchGoogleDriveFolderFiles(
     };
   }
 
-  // 3. For any other arbitrary private folder pasted without credentials:
-  // Strictly enforce Google Drive permission rule:
-  // "Do not assume that pasting a private folder URL automatically grants permission to read its contents.
-  // If authentication or permission is missing, show a clear error and explain how to connect or authorize Google Drive."
+  // 4. For any other private folder pasted without credentials:
   return {
     success: false,
     folderId,
     files: [],
     isAuthorized: false,
-    errorMessage: `Google Drive Authentication Required: Folder "${folderId}" cannot be read without authorization. Please sign in with Google or provide an OAuth Access Token in Drive Settings. Do not make private payment receipts publicly accessible.`,
+    errorMessage: `Google Drive Authentication Required: Folder "${folderId}" cannot be read without authorization. Please click "Authorize Drive" to connect your Google account. Do not make private payment receipts publicly accessible.`,
     source: 'simulated',
   };
 }
