@@ -35,11 +35,13 @@ console.log('🚀 ATUL EXPENSE MANAGER: GOOGLE DRIVE OAUTH 2.0 & RBAC VERIFICATI
 console.log('================================================================\n');
 
 // -------------------------------------------------------------
-// 1. Verify Server-Side OAuth Library (api/_lib/googleAuth.ts)
+// 1. Verify Server-Side OAuth Library (server/_lib/googleAuth.ts)
 // -------------------------------------------------------------
-console.log('1. Checking Server-Side Google OAuth Engine (api/_lib/googleAuth.ts)...');
-const googleAuthFile = path.join(rootDir, 'api/_lib/googleAuth.ts');
-assert(fs.existsSync(googleAuthFile), 'api/_lib/googleAuth.ts exists');
+console.log('1. Checking Server-Side Google OAuth Engine (server/_lib/googleAuth.ts)...');
+const googleAuthFile = fs.existsSync(path.join(rootDir, 'server/_lib/googleAuth.ts'))
+  ? path.join(rootDir, 'server/_lib/googleAuth.ts')
+  : path.join(rootDir, 'api/_lib/googleAuth.ts');
+assert(fs.existsSync(googleAuthFile), 'server/_lib/googleAuth.ts exists');
 
 const googleAuthContent = fs.readFileSync(googleAuthFile, 'utf-8');
 
@@ -106,19 +108,24 @@ assert(
 // -------------------------------------------------------------
 console.log('\n2. Checking Serverless OAuth Endpoints in api/ directory...');
 const routes = [
-  'api/auth/google/url.ts',
-  'api/auth/google/callback.ts',
-  'api/auth/google/status.ts',
-  'api/auth/google/disconnect.ts',
-  'api/drive/files.ts',
+  'api/auth/google/url.js',
+  'api/auth/google/callback.js',
+  'api/auth/google/status.js',
+  'api/auth/google/disconnect.js',
+  'api/drive/files.js',
 ];
 
 for (const r of routes) {
-  assert(fs.existsSync(path.join(rootDir, r)), `${r} exists`);
+  assert(fs.existsSync(path.join(rootDir, r)), `${r} exists (bundled serverless function)`);
 }
 
 // Check callback logic
-const callbackContent = fs.readFileSync(path.join(rootDir, 'api/auth/google/callback.ts'), 'utf-8');
+const callbackContent = fs.readFileSync(
+  fs.existsSync(path.join(rootDir, 'server/auth/google/callback.ts'))
+    ? path.join(rootDir, 'server/auth/google/callback.ts')
+    : path.join(rootDir, 'api/auth/google/callback.js'),
+  'utf-8'
+);
 assert(
   callbackContent.includes('exchangeCodeForTokens'),
   'Callback exchanges authorization code for tokens securely on server'
