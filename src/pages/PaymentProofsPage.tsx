@@ -38,6 +38,7 @@ import {
   Image as ImageIcon,
   Lock,
   Folder,
+  Trash2,
 } from 'lucide-react';
 import { DriveFileViewerModal } from '../components/DriveFileViewerModal';
 import {
@@ -65,6 +66,9 @@ interface PaymentProofsPageProps {
   onImportBatch: (proofs: Array<Omit<PaymentProof, 'id' | 'createdAt' | 'updatedAt'>>) => void;
   onReviewProof: (proofId: string, status: PaymentProofStatus, notes?: string) => void;
   onDeleteProof: (proofId: string) => void;
+  onClearAllProofs?: () => void;
+  onDeleteDriveFile?: (fileId: string) => void;
+  onClearDriveFiles?: () => void;
   onUpdateDriveConfig: (partial: Partial<GoogleDriveConfig>) => void;
   onRefreshDriveFolder: () => void;
   onDiscussExpense?: (expense: Expense) => void;
@@ -84,6 +88,9 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
   onImportBatch,
   onReviewProof,
   onDeleteProof,
+  onClearAllProofs,
+  onDeleteDriveFile,
+  onClearDriveFiles,
   onUpdateDriveConfig,
   onRefreshDriveFolder,
   onDiscussExpense,
@@ -112,7 +119,9 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
         : 'https://drive.google.com/drive/folders/folder-gdrive-payment-proofs-2026')
     );
   });
-  const [importedFiles, setImportedFiles] = useState<DriveFolderFile[]>(driveFolderFiles);
+  const [importedFiles, setImportedFiles] = useState<DriveFolderFile[]>(() => {
+    return driveFolderFiles.filter((f) => !f.id.startsWith('gdrive-file-0'));
+  });
   const [isImportingLink, setIsImportingLink] = useState(false);
   const [linkImportError, setLinkImportError] = useState<string | null>(null);
   const [activeViewerFile, setActiveViewerFile] = useState<DriveFolderFile | null>(null);
@@ -125,6 +134,35 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
     return googleDriveConfig.folderId || 'folder-gdrive-payment-proofs-2026';
   });
   const [quickFileInput, setQuickFileInput] = useState<string>('');
+
+  // Keep importedFiles synchronized with incoming driveFolderFiles (filtering demo files)
+  useEffect(() => {
+    setImportedFiles(driveFolderFiles.filter((f) => !f.id.startsWith('gdrive-file-0')));
+  }, [driveFolderFiles]);
+
+  // Purge legacy demo files & proofs from localStorage on mount
+  useEffect(() => {
+    try {
+      const gdriveRaw = localStorage.getItem('atul_gdrive_files');
+      if (gdriveRaw) {
+        const parsed = JSON.parse(gdriveRaw);
+        if (Array.isArray(parsed) && parsed.some((f: any) => f.id && f.id.startsWith('gdrive-file-0'))) {
+          const cleaned = parsed.filter((f: any) => !f.id || !f.id.startsWith('gdrive-file-0'));
+          localStorage.setItem('atul_gdrive_files', JSON.stringify(cleaned));
+        }
+      }
+      const proofsRaw = localStorage.getItem('atul_payment_proofs');
+      if (proofsRaw) {
+        const parsed = JSON.parse(proofsRaw);
+        if (Array.isArray(parsed) && parsed.some((p: any) => p.id && p.id.startsWith('proof-00'))) {
+          const cleaned = parsed.filter((p: any) => !p.id || !p.id.startsWith('proof-00'));
+          localStorage.setItem('atul_payment_proofs', JSON.stringify(cleaned));
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // Monitor Google OAuth Status & OAuth callback redirect parameters
   useEffect(() => {
@@ -366,6 +404,68 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
     backend.addDriveFolderFile(newFile);
     setImportedFiles((prev) => [newFile, ...prev]);
     onNotify('success', `Simulated new file in Drive folder: "${newFile.name}". Click "Refresh" to verify.`);
+  };
+
+  // Delete single file from Proofs Gallery
+  const handleDeleteDriveFile = (fileId: string, fileName?: string) => {
+    if (isManager) {
+      onNotify('warning', 'Deleting gallery files is restricted in Audit mode.');
+      return;
+    }
+    if (confirm(`Are you sure you want to remove ${fileName ? `"${fileName}"` : 'this file'} from the gallery?`)) {
+      setImportedFiles((prev) => prev.filter((f) => f.id !== fileId));
+      if (onDeleteDriveFile) {
+        onDeleteDriveFile(fileId);
+      } else {
+        backend.deleteDriveFolderFile(fileId);
+      }
+      onNotify('info', `Removed file from Proofs Gallery.`);
+    }
+  };
+
+  // Clear all files from Proofs Gallery
+  const handleClearDriveGallery = () => {
+    if (isManager) {
+      onNotify('warning', 'Clearing gallery files is restricted in Audit mode.');
+      return;
+    }
+    if (confirm(`Are you sure you want to delete all files from the Proofs Gallery?`)) {
+      setImportedFiles([]);
+      if (onClearDriveFiles) {
+        onClearDriveFiles();
+      } else {
+        backend.clearDriveFolderFiles();
+      }
+      onNotify('success', 'Cleared all files from Proofs Gallery.');
+    }
+  };
+
+  // Clear all payment proofs
+  const handleClearAllProofs = () => {
+    if (isManager) {
+      onNotify('warning', 'Deleting payment proofs is restricted in Audit mode.');
+      return;
+    }
+    if (confirm(`Are you sure you want to delete all ${paymentProofs.length} payment proof records?`)) {
+      if (onClearAllProofs) {
+        onClearAllProofs();
+      } else {
+        backend.clearAllPaymentProofs();
+      }
+      onNotify('success', 'All payment proofs have been deleted.');
+    }
+  };
+
+  // Delete individual payment proof
+  const handleDeletePaymentProof = (proofId: string, fileName: string) => {
+    if (isManager) {
+      onNotify('warning', 'Deleting payment proofs is restricted in Audit mode.');
+      return;
+    }
+    if (confirm(`Are you sure you want to delete payment proof "${fileName}"?`)) {
+      onDeleteProof(proofId);
+      onNotify('info', `Payment proof "${fileName}" deleted.`);
+    }
   };
 
   // Filtered Proofs
@@ -778,9 +878,9 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
                 </button>
               </div>
 
-              {/* Upload simulation button to test newly added files and refresh */}
+              {/* Upload simulation button and Clear Gallery */}
               {!isManager && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <button
                     type="button"
                     onClick={handleSimulateNewUpload}
@@ -790,6 +890,18 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
                     <Plus className="h-3.5 w-3.5" />
                     <span>Simulate New Upload</span>
                   </button>
+
+                  {importedFiles.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearDriveGallery}
+                      title="Delete all files from the Proofs Gallery"
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 hover:text-rose-700 dark:text-rose-400"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>Clear Gallery</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -799,7 +911,9 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
               <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center dark:border-slate-800">
                 <FileText className="mx-auto h-8 w-8 text-slate-400" />
                 <p className="mt-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  No files found matching the selected filter.
+                  {importedFiles.length === 0
+                    ? 'Proofs Gallery is empty. Paste a Google Drive folder link or receipt link above to import payment proofs.'
+                    : 'No files found matching the selected filter.'}
                 </p>
               </div>
             ) : (
@@ -868,16 +982,32 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
                           <span>{isPdf ? 'View PDF' : 'Preview'}</span>
                         </button>
 
-                        <a
-                          href={webLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title="Open original file in Google Drive"
-                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          <span>Drive</span>
-                        </a>
+                        <div className="flex items-center gap-1.5">
+                          <a
+                            href={webLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Open original file in Google Drive"
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            <span>Drive</span>
+                          </a>
+
+                          {!isManager && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteDriveFile(file.id, file.name);
+                              }}
+                              title="Delete file from gallery"
+                              className="p-1 rounded text-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -1039,6 +1169,18 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
             <option value="Porter Dispatch Bill">Porter Dispatch Bill</option>
             <option value="Other">Other</option>
           </select>
+
+          {paymentProofs.length > 0 && !isManager && (
+            <button
+              type="button"
+              onClick={handleClearAllProofs}
+              className="ml-auto inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-lg font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-200/80 dark:border-rose-900/50 transition-colors"
+              title="Delete all payment proofs"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Delete All Proofs</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1194,15 +1336,28 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
                     </div>
 
                     {/* Card Actions Footer */}
-                    <div className="p-4 pt-0">
+                    <div className="p-4 pt-0 flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => setSelectedProofForAudit(proof)}
-                        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 dark:bg-slate-800 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 dark:hover:bg-slate-700 shadow-sm transition-colors"
+                        className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 dark:bg-slate-800 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 dark:hover:bg-slate-700 shadow-sm transition-colors"
                       >
                         <Eye className="h-3.5 w-3.5" />
                         <span>Audit & Compare</span>
                       </button>
+                      {!isManager && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeletePaymentProof(proof.id, proof.fileName);
+                          }}
+                          title="Delete payment proof"
+                          className="p-2 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100 transition-colors shadow-xs"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -1299,13 +1454,25 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
                         )}
                       </td>
                       <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedProofForAudit(proof)}
-                          className="rounded-lg bg-blue-50 dark:bg-blue-950/60 px-2.5 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-100 transition-colors"
-                        >
-                          Audit
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedProofForAudit(proof)}
+                            className="rounded-lg bg-blue-50 dark:bg-blue-950/60 px-2.5 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-100 transition-colors"
+                          >
+                            Audit
+                          </button>
+                          {!isManager && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePaymentProof(proof.id, proof.fileName)}
+                              title="Delete proof"
+                              className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1451,6 +1618,10 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
         isOpen={Boolean(activeViewerFile)}
         onClose={() => setActiveViewerFile(null)}
         isManager={isManager}
+        onDeleteFile={(id) => {
+          handleDeleteDriveFile(id, activeViewerFile?.name);
+          setActiveViewerFile(null);
+        }}
         onLinkToProof={(_file) => {
           setIsImportModalOpen(true);
         }}

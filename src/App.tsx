@@ -85,6 +85,9 @@ export function App() {
     importDrivePaymentProofs,
     reviewPaymentProof,
     deletePaymentProof,
+    clearAllPaymentProofs,
+    deleteDriveFolderFile,
+    clearDriveFolderFiles,
     updateGoogleDriveConfig,
     refreshDriveFolder,
   } = useExpenseData();
@@ -557,6 +560,9 @@ export function App() {
               onImportBatch={importDrivePaymentProofs}
               onReviewProof={reviewPaymentProof}
               onDeleteProof={deletePaymentProof}
+              onClearAllProofs={clearAllPaymentProofs}
+              onDeleteDriveFile={deleteDriveFolderFile}
+              onClearDriveFiles={clearDriveFolderFiles}
               onUpdateDriveConfig={updateGoogleDriveConfig}
               onRefreshDriveFolder={refreshDriveFolder}
               onDiscussExpense={openExpenseDiscussion}

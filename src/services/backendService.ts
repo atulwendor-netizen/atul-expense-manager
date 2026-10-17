@@ -1667,13 +1667,21 @@ class BackendService {
     } else {
       try {
         proofs = JSON.parse(raw);
-        if (!Array.isArray(proofs) || proofs.length === 0) {
+        if (!Array.isArray(proofs)) {
           proofs = [...initialPaymentProofs];
           this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(proofs));
         }
       } catch {
         proofs = [...initialPaymentProofs];
       }
+    }
+
+    // Filter out legacy demo records (proof-001 through proof-005)
+    const demoProofIds = new Set(['proof-001', 'proof-002', 'proof-003', 'proof-004', 'proof-005']);
+    const beforeProofCount = proofs.length;
+    proofs = proofs.filter((p) => !demoProofIds.has(p.id) && !p.id.startsWith('proof-00'));
+    if (proofs.length !== beforeProofCount) {
+      this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(proofs));
     }
 
     // Run dynamic deduplication detection check on all proofs
@@ -1906,6 +1914,18 @@ class BackendService {
     });
   }
 
+  clearAllPaymentProofs(): void {
+    this.enforceOwnerPermission('Clear All Payment Proofs');
+    this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify([]));
+    this.recordAuditLog({
+      action: 'Cleared All Payment Proofs',
+      recordType: 'proof',
+      recordId: 'all-proofs',
+      previousValue: 'Payment proofs reset',
+      newValue: '0 payment proofs',
+    });
+  }
+
   // Finance and Manager Audit: Verify, Reject, or Request Clarification
   reviewPaymentProof(
     proofId: string,
@@ -2036,10 +2056,56 @@ class BackendService {
         allFiles = [...initialDriveFolderFiles];
       }
     }
+
+    // Filter out legacy demo files (gdrive-file-01 through gdrive-file-08)
+    const demoDriveIds = new Set([
+      'gdrive-file-01',
+      'gdrive-file-02',
+      'gdrive-file-03',
+      'gdrive-file-04',
+      'gdrive-file-05',
+      'gdrive-file-06',
+      'gdrive-file-07',
+      'gdrive-file-08',
+    ]);
+    const beforeFileCount = allFiles.length;
+    allFiles = allFiles.filter((f) => !demoDriveIds.has(f.id) && !f.id.startsWith('gdrive-file-0'));
+    if (allFiles.length !== beforeFileCount || !raw) {
+      this.setItem(STORAGE_KEYS.GDRIVE_FILES, JSON.stringify(allFiles));
+    }
+
     if (!virtualFolder || virtualFolder === 'all') {
       return allFiles;
     }
     return allFiles.filter((f) => f.virtualFolder === virtualFolder);
+  }
+
+  // Delete a single file from Google Drive folder gallery
+  deleteDriveFolderFile(fileId: string): void {
+    this.enforceOwnerPermission('Delete Drive Folder File');
+    const current = this.getDriveFolderFiles();
+    const filtered = current.filter((f) => f.id !== fileId);
+    this.setItem(STORAGE_KEYS.GDRIVE_FILES, JSON.stringify(filtered));
+    this.recordAuditLog({
+      action: 'Deleted Drive File',
+      recordType: 'proof',
+      recordId: fileId,
+      previousValue: `File ID: ${fileId}`,
+      newValue: 'Removed from Gallery',
+    });
+  }
+
+  // Clear all files from Google Drive folder gallery
+  clearDriveFolderFiles(): void {
+    this.enforceOwnerPermission('Clear Drive Files Gallery');
+    this.setItem(STORAGE_KEYS.GDRIVE_FILES, JSON.stringify([]));
+    this.recordAuditLog({
+      action: 'Cleared Drive Files Gallery',
+      recordType: 'proof',
+      recordId: 'all-drive-files',
+      previousValue: 'Gallery cleared',
+      newValue: '0 files',
+    });
   }
 
   // Add a new file to the Google Drive folder without duplicates

@@ -8,6 +8,7 @@ import {
   HardDrive,
   Calendar,
   FileCheck,
+  Trash2,
 } from 'lucide-react';
 import { formatFileSize, isImageFile, isPdfFile, getDriveEmbedUrl, getDriveWebLink } from '../utils/googleDrive';
 
@@ -16,6 +17,7 @@ interface DriveFileViewerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onLinkToProof?: (file: DriveFolderFile) => void;
+  onDeleteFile?: (fileId: string) => void;
   isManager?: boolean;
 }
 
@@ -24,6 +26,7 @@ export const DriveFileViewerModal: React.FC<DriveFileViewerModalProps> = ({
   isOpen,
   onClose,
   onLinkToProof,
+  onDeleteFile,
   isManager = false,
 }) => {
   if (!isOpen || !file) return null;
@@ -155,6 +158,21 @@ export const DriveFileViewerModal: React.FC<DriveFileViewerModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2.5">
+            {onDeleteFile && !isManager && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Are you sure you want to remove "${file.name}" from the gallery?`)) {
+                    onDeleteFile(file.id);
+                    onClose();
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-100 transition-colors mr-1"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Delete File</span>
+              </button>
+            )}
             {onLinkToProof && !isManager && (
               <button
                 type="button"

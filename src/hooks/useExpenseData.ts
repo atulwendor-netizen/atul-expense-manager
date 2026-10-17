@@ -534,6 +534,21 @@ export function useExpenseData() {
     refreshState();
   }, [refreshState]);
 
+  const clearAllPaymentProofs = useCallback(() => {
+    backend.clearAllPaymentProofs();
+    refreshState();
+  }, [refreshState]);
+
+  const deleteDriveFolderFile = useCallback((fileId: string) => {
+    backend.deleteDriveFolderFile(fileId);
+    refreshState();
+  }, [refreshState]);
+
+  const clearDriveFolderFiles = useCallback(() => {
+    backend.clearDriveFolderFiles();
+    refreshState();
+  }, [refreshState]);
+
   const updateGoogleDriveConfig = useCallback((partial: Partial<GoogleDriveConfig>) => {
     const cfg = backend.updateGoogleDriveConfig(partial);
     refreshState();
@@ -616,6 +631,9 @@ export function useExpenseData() {
     importDrivePaymentProofs,
     reviewPaymentProof,
     deletePaymentProof,
+    clearAllPaymentProofs,
+    deleteDriveFolderFile,
+    clearDriveFolderFiles,
     updateGoogleDriveConfig,
     refreshDriveFolder,
     missingProofExpenses,

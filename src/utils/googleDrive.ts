@@ -368,7 +368,7 @@ export async function fetchGoogleDriveFolderFiles(
       // ignore
     }
 
-    const merged = [...initialDriveFolderFiles, ...customFiles];
+    const merged = [...initialDriveFolderFiles, ...customFiles].filter((f) => !f.id.startsWith('gdrive-file-0'));
     const uniqueMap = new Map<string, DriveFolderFile>();
     merged.forEach((f) => uniqueMap.set(f.id, f));
 
