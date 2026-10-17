@@ -71,16 +71,27 @@ Inside this folder, you can organize receipts into virtual categories:
 
 ---
 
-## 4. Import & Mapping Workflow
+## 4. Google Drive Link Import & Viewer Workflow
 
-1. Open the **Payment Proofs** tab from the left sidebar navigation.
-2. Click **Import Proofs**.
-3. Choose either:
-   - **Browse Dedicated Folder**: Select files from `Expense Manager Payment Proofs`.
-   - **Direct Drive Link / File ID**: Paste any Google Drive shared link or file ID.
-4. Set batch settings (Trip scope, payment date, proof type) or let the **Smart OCR Match** suggest values extracted from the document.
-5. Link each proof to its corresponding expense record (e.g. `Row #26: IRCTC Train Ticket ₹640.00`).
-6. Click **Import Selected Proofs**. The proof metadata and preview URL are saved without creating redundant file copies.
+### 4.1 Simple Folder Link Import
+1. Upload payment screenshots, images, PDFs, or other supported records to Google Drive.
+2. Copy the Google Drive folder link (e.g. `https://drive.google.com/drive/folders/1A2B3C...`) or individual file link.
+3. Paste the link into the **Google Drive Folder Link Import** input at the top of the **Payment Proofs** page.
+4. Click **Import / View**:
+   - The application parses the folder ID and queries Google Drive API v3.
+   - For authorized folders, all images (receipts, UPI screenshots) and PDF documents are immediately listed in the folder gallery.
+5. **Interactive File Previews**:
+   - Click **Preview** on any image to open the high-resolution image preview.
+   - Click **View PDF** on any PDF document to open the embedded Google Drive PDF viewer.
+   - Click **Drive** (`Open in Google Drive`) to open the original file directly in Google Drive.
+6. **Refreshing Newly Added Files**:
+   - Click **Refresh Folder** at any time. The application re-queries the folder link to display newly uploaded files without creating duplicate entries.
+   - Use the **Simulate New Upload** button to test instant discovery of newly added receipts.
+
+### 4.2 Batch Import & Expense Mapping
+1. Click **Import Proofs** or **Map to Proof**.
+2. Assign the proof to a trip (`Service Visit`) and an associated expense record.
+3. Click **Import Selected Proofs** to link the proof to the official audit ledger.
 
 ---
 

@@ -93,6 +93,7 @@ const STORAGE_KEYS = {
   NOTIFICATIONS: 'atul_cloud_notifications_v1',
   PAYMENT_PROOFS: 'atul_cloud_payment_proofs_v1',
   GDRIVE_CONFIG: 'atul_cloud_gdrive_config_v1',
+  GDRIVE_FILES: 'atul_cloud_gdrive_files_v1',
 };
 
 class BackendService {
@@ -2021,19 +2022,46 @@ class BackendService {
   // Fetch available files from configured Google Drive folder (virtual categories)
   getDriveFolderFiles(virtualFolder?: string): DriveFolderFile[] {
     this.enforceActiveMember();
-    if (!virtualFolder || virtualFolder === 'all') {
-      return initialDriveFolderFiles;
+    const raw = this.getItem(STORAGE_KEYS.GDRIVE_FILES);
+    let allFiles = [...initialDriveFolderFiles];
+    if (raw) {
+      try {
+        const stored: DriveFolderFile[] = JSON.parse(raw);
+        if (Array.isArray(stored)) {
+          const map = new Map<string, DriveFolderFile>();
+          [...initialDriveFolderFiles, ...stored].forEach((f) => map.set(f.id, f));
+          allFiles = Array.from(map.values());
+        }
+      } catch {
+        allFiles = [...initialDriveFolderFiles];
+      }
     }
-    return initialDriveFolderFiles.filter((f) => f.virtualFolder === virtualFolder);
+    if (!virtualFolder || virtualFolder === 'all') {
+      return allFiles;
+    }
+    return allFiles.filter((f) => f.virtualFolder === virtualFolder);
+  }
+
+  // Add a new file to the Google Drive folder without duplicates
+  addDriveFolderFile(file: DriveFolderFile): DriveFolderFile {
+    this.enforceActiveMember();
+    const currentFiles = this.getDriveFolderFiles();
+    if (currentFiles.some((f) => f.id === file.id)) {
+      return file;
+    }
+    const updated = [file, ...currentFiles];
+    this.setItem(STORAGE_KEYS.GDRIVE_FILES, JSON.stringify(updated));
+    return file;
   }
 
   refreshDriveFolder(): { success: boolean; filesCount: number; lastSyncedAt: string } {
     this.enforceActiveMember();
+    const files = this.getDriveFolderFiles();
     const lastSyncedAt = new Date().toISOString();
     this.updateGoogleDriveConfig({ lastSyncedAt });
     return {
       success: true,
-      filesCount: initialDriveFolderFiles.length,
+      filesCount: files.length,
       lastSyncedAt,
     };
   }

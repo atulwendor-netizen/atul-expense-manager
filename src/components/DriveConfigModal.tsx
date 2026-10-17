@@ -31,6 +31,9 @@ export const DriveConfigModal: React.FC<DriveConfigModalProps> = ({
 }) => {
   const [folderName, setFolderName] = useState(config.folderName || 'Expense Manager Payment Proofs');
   const [clientId, setClientId] = useState(config.clientId || '78291038472-atul-expense-drive.apps.googleusercontent.com');
+  const [apiKey, setApiKey] = useState(config.apiKey || '');
+  const [accessToken, setAccessToken] = useState(config.accessToken || '');
+  const [folderUrl, setFolderUrl] = useState(config.folderUrl || '');
   const [isConnected, setIsConnected] = useState(config.isConnected);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -42,6 +45,9 @@ export const DriveConfigModal: React.FC<DriveConfigModalProps> = ({
     onSaveConfig({
       folderName: folderName.trim() || 'Expense Manager Payment Proofs',
       clientId: clientId.trim(),
+      apiKey: apiKey.trim() || undefined,
+      accessToken: accessToken.trim() || undefined,
+      folderUrl: folderUrl.trim() || undefined,
       isConnected,
     });
     setSavedSuccess(true);
@@ -178,6 +184,21 @@ export const DriveConfigModal: React.FC<DriveConfigModalProps> = ({
 
             <div>
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                <span>Default Folder Link or ID</span>
+                <span className="text-[11px] font-normal text-slate-400">Google Drive URL</span>
+              </label>
+              <input
+                type="text"
+                disabled={isManager}
+                value={folderUrl}
+                onChange={(e) => setFolderUrl(e.target.value)}
+                placeholder="https://drive.google.com/drive/folders/..."
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs text-slate-900 placeholder-slate-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-white disabled:opacity-60"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
                 <span>OAuth 2.0 Client ID</span>
                 <span className="text-[11px] font-normal text-slate-400">Read-only Scope</span>
               </label>
@@ -191,6 +212,36 @@ export const DriveConfigModal: React.FC<DriveConfigModalProps> = ({
                   className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 pl-9 text-xs font-mono text-slate-900 placeholder-slate-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-white disabled:opacity-60"
                 />
                 <Key className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                  <span>OAuth Access Token (Optional)</span>
+                </label>
+                <input
+                  type="password"
+                  disabled={isManager}
+                  value={accessToken}
+                  onChange={(e) => setAccessToken(e.target.value)}
+                  placeholder="Bearer ya29.a0..."
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-mono text-slate-900 placeholder-slate-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-white disabled:opacity-60"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                  <span>Google API Key (Optional)</span>
+                </label>
+                <input
+                  type="password"
+                  disabled={isManager}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="AIzaSy..."
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-mono text-slate-900 placeholder-slate-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-white disabled:opacity-60"
+                />
               </div>
             </div>
           </div>

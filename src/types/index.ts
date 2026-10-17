@@ -133,6 +133,8 @@ export interface GoogleDriveConfig {
   apiKey?: string;
   folderId: string;
   folderName: string;
+  folderUrl?: string;
+  accessToken?: string;
   isConnected: boolean;
   connectedAccountEmail?: string;
   lastSyncedAt?: string;
