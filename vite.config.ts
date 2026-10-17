@@ -1,4 +1,4 @@
-import { defineConfig, Plugin } from 'vite';
+import { defineConfig, loadEnv, Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import urlHandler from './api/auth/google/url';
 import callbackHandler from './api/auth/google/callback';
@@ -50,14 +50,22 @@ function googleDriveDevApiPlugin(): Plugin {
 }
 
 // https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [react(), googleDriveDevApiPlugin()],
-  server: {
-    port: 5173,
-    host: true
-  },
-  preview: {
-    port: 4173,
-    host: true
-  }
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  if (env.GOOGLE_CLIENT_ID) process.env.GOOGLE_CLIENT_ID = env.GOOGLE_CLIENT_ID;
+  if (env.GOOGLE_CLIENT_SECRET) process.env.GOOGLE_CLIENT_SECRET = env.GOOGLE_CLIENT_SECRET;
+  if (env.GOOGLE_REDIRECT_URI) process.env.GOOGLE_REDIRECT_URI = env.GOOGLE_REDIRECT_URI;
+  if (env.GOOGLE_REDIRECT_URI_LOCAL) process.env.GOOGLE_REDIRECT_URI_LOCAL = env.GOOGLE_REDIRECT_URI_LOCAL;
+
+  return {
+    plugins: [react(), googleDriveDevApiPlugin()],
+    server: {
+      port: 5173,
+      host: true,
+    },
+    preview: {
+      port: 4173,
+      host: true,
+    },
+  };
 });

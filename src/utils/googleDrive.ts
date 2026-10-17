@@ -8,6 +8,41 @@ export interface ParsedDriveLink {
 }
 
 /**
+ * Cleanly extract Google Drive folder ID from full URL, query string, or direct ID.
+ */
+export function extractCleanFolderId(input?: string | null): string {
+  if (!input || typeof input !== 'string') return '';
+  const trimmed = input.trim();
+
+  // 1. /folders/{id} format (handles trailing slashes and query strings)
+  const folderMatch = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (folderMatch && folderMatch[1]) {
+    return folderMatch[1];
+  }
+
+  // 2. /file/d/{id} format
+  const fileMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (fileMatch && fileMatch[1]) {
+    return fileMatch[1];
+  }
+
+  // 3. ?id={id} or &id={id} query param
+  const idParamMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (idParamMatch && idParamMatch[1]) {
+    return idParamMatch[1];
+  }
+
+  // 4. Strip trailing query params or hash if raw ID with garbage
+  const clean = trimmed.split(/[?#]/)[0].replace(/\/+$/, '');
+  const lastPart = clean.split('/').pop() || '';
+  if (/^[a-zA-Z0-9_-]{10,}$/.test(lastPart)) {
+    return lastPart;
+  }
+
+  return trimmed;
+}
+
+/**
  * Robust Google Drive URL parser supporting folders, files, and direct IDs.
  */
 export function parseGoogleDriveLink(input: string): ParsedDriveLink | null {
@@ -37,7 +72,6 @@ export function parseGoogleDriveLink(input: string): ParsedDriveLink | null {
   // 3. Open parameter: ?id={id}
   const idParamMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
   if (idParamMatch && idParamMatch[1]) {
-    // If URL contains "folder" assume folder, else check context
     const isFolder = trimmed.toLowerCase().includes('folder');
     return {
       type: isFolder ? 'folder' : 'file',
@@ -46,12 +80,13 @@ export function parseGoogleDriveLink(input: string): ParsedDriveLink | null {
     };
   }
 
-  // 4. Direct ID string (length >= 10, alphanumeric with dashes/underscores)
-  if (/^[a-zA-Z0-9_-]{10,}$/.test(trimmed)) {
+  // 4. Direct ID string
+  const cleanId = extractCleanFolderId(trimmed);
+  if (cleanId && /^[a-zA-Z0-9_-]{10,}$/.test(cleanId)) {
     return {
-      type: trimmed.startsWith('folder') ? 'folder' : 'folder',
-      id: trimmed,
-      rawUrl: `https://drive.google.com/drive/folders/${trimmed}`,
+      type: 'folder',
+      id: cleanId,
+      rawUrl: `https://drive.google.com/drive/folders/${cleanId}`,
     };
   }
 
@@ -131,7 +166,7 @@ export interface GoogleAuthStatus {
  */
 export async function checkGoogleAuthStatus(): Promise<GoogleAuthStatus> {
   try {
-    const res = await fetch('/api/auth/google/status');
+    const res = await fetch('/api/auth/google/status', { credentials: 'include' });
     if (res.ok) {
       return await res.json();
     }
@@ -157,7 +192,9 @@ export async function getGoogleAuthUrl(returnTo = '/payment-proofs'): Promise<{
   message?: string;
 }> {
   try {
-    const res = await fetch(`/api/auth/google/url?returnTo=${encodeURIComponent(returnTo)}`);
+    const res = await fetch(`/api/auth/google/url?returnTo=${encodeURIComponent(returnTo)}`, {
+      credentials: 'include',
+    });
     const data = await res.json();
     if (res.ok && data.url) {
       return { url: data.url, isConfigured: true, redirectUri: data.redirectUri };
@@ -184,7 +221,10 @@ export async function getGoogleAuthUrl(returnTo = '/payment-proofs'): Promise<{
  */
 export async function disconnectGoogleAccount(): Promise<boolean> {
   try {
-    const res = await fetch('/api/auth/google/disconnect', { method: 'POST' });
+    const res = await fetch('/api/auth/google/disconnect', {
+      method: 'POST',
+      credentials: 'include',
+    });
     return res.ok;
   } catch {
     return false;
@@ -196,12 +236,16 @@ export async function disconnectGoogleAccount(): Promise<boolean> {
  * If authentication is missing on a private folder, returns clear error explaining how to connect.
  */
 export async function fetchGoogleDriveFolderFiles(
-  folderId: string,
+  folderIdInput: string,
   config: Partial<GoogleDriveConfig> = {}
 ): Promise<FetchFolderResult> {
+  const folderId = extractCleanFolderId(folderIdInput) || folderIdInput;
+
   // 1. First, attempt to fetch via the secure server-side Google Drive API endpoint
   try {
-    const res = await fetch(`/api/drive/files?folderId=${encodeURIComponent(folderId)}`);
+    const res = await fetch(`/api/drive/files?folderId=${encodeURIComponent(folderId)}`, {
+      credentials: 'include',
+    });
     if (res.ok) {
       const data = await res.json();
       if (data.success && Array.isArray(data.files)) {

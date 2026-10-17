@@ -124,12 +124,33 @@ assert(
   'Callback exchanges authorization code for tokens securely on server'
 );
 assert(
-  callbackContent.includes('/payment-proofs?gdrive_auth=success'),
-  'Callback redirects back to /payment-proofs with gdrive_auth=success on success'
+  callbackContent.includes('gdrive_auth=success') && callbackContent.includes('returnPath'),
+  'Callback redirects back with gdrive_auth=success and account email'
 );
 assert(
-  callbackContent.includes('/payment-proofs?gdrive_auth=error'),
-  'Callback redirects back to /payment-proofs with gdrive_auth=error on failure'
+  callbackContent.includes('gdrive_auth=error'),
+  'Callback redirects back with gdrive_auth=error on failure'
+);
+
+// Check CSRF and Encrypted Cookie Session Integration
+assert(
+  callbackContent.includes('verifyStateToken') && callbackContent.includes('encryptTokenPayload'),
+  'Callback validates CSRF state token and encrypts tokens into session cookie'
+);
+assert(
+  googleAuthContent.includes('generateStateToken') && googleAuthContent.includes('verifyStateToken'),
+  'googleAuth provides cryptographic HMAC-SHA256 CSRF state token generator & verifier'
+);
+assert(
+  googleAuthContent.includes('encryptTokenPayload') && googleAuthContent.includes('decryptTokenPayload'),
+  'googleAuth provides AES-256-GCM token encryption for stateless Vercel cookies'
+);
+
+// Check Vercel Routing Configuration
+const vercelConfig = JSON.parse(fs.readFileSync(path.join(rootDir, 'vercel.json'), 'utf-8'));
+assert(
+  vercelConfig.rewrites && vercelConfig.rewrites.some(r => r.source.includes('api')),
+  'vercel.json excludes /api routes from SPA index.html fallback rewrite'
 );
 
 // Check vite dev middleware integration

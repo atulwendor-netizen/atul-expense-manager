@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 
 export interface StoredDriveTokens {
   access_token: string;
@@ -27,19 +28,69 @@ const SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
 ].join(' ');
 
-// Storage path for tokens in secure directory
-const DATA_DIR = path.resolve(process.cwd(), '.data');
-const TOKEN_FILE_PATH = path.join(DATA_DIR, 'google_drive_tokens.json');
+// Storage paths: try .data first (local), fall back to /tmp (Vercel serverless)
+const LOCAL_DATA_DIR = path.resolve(process.cwd(), '.data');
+const TMP_DATA_DIR = '/tmp';
+const TOKEN_FILE_NAME = 'google_drive_tokens.json';
 
 /**
- * Helper to get environment variables safely
+ * Cleanly extract Google Drive folder ID from full URL, query string, or direct ID.
+ */
+export function extractCleanFolderId(input?: string | null): string {
+  if (!input || typeof input !== 'string') return '';
+  const trimmed = input.trim();
+
+  // 1. /folders/{id} format (handles trailing slashes and query strings)
+  const folderMatch = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (folderMatch && folderMatch[1]) {
+    return folderMatch[1];
+  }
+
+  // 2. /file/d/{id} format
+  const fileMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (fileMatch && fileMatch[1]) {
+    return fileMatch[1];
+  }
+
+  // 3. ?id={id} or &id={id} query param
+  const idParamMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (idParamMatch && idParamMatch[1]) {
+    return idParamMatch[1];
+  }
+
+  // 4. Strip trailing query params or hash if raw ID with garbage
+  const clean = trimmed.split(/[?#]/)[0].replace(/\/+$/, '');
+  const lastPart = clean.split('/').pop() || '';
+  if (/^[a-zA-Z0-9_-]{10,}$/.test(lastPart)) {
+    return lastPart;
+  }
+
+  return trimmed;
+}
+
+/**
+ * Helper to get environment variables safely and calculate the exact redirect URI
  */
 export function getEnvConfig(reqOrigin?: string) {
-  const clientId = process.env.GOOGLE_CLIENT_ID || '';
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
-  const origin = reqOrigin || process.env.APP_ORIGIN || 'http://localhost:5173';
-  const redirectUri =
-    process.env.GOOGLE_REDIRECT_URI || `${origin}/api/auth/google/callback`;
+  const clientId = (process.env.GOOGLE_CLIENT_ID || '').trim();
+  const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').trim();
+
+  // Determine redirect URI:
+  // 1. Explicit GOOGLE_REDIRECT_URI environment variable has top priority
+  let redirectUri = (process.env.GOOGLE_REDIRECT_URI || '').trim();
+
+  // 2. If not explicitly provided, calculate from request origin or production URL
+  if (!redirectUri) {
+    const origin = reqOrigin || process.env.APP_ORIGIN || 'https://atul-expense-manager.vercel.app';
+    redirectUri = `${origin}/api/auth/google/callback`;
+  }
+
+  // 3. If testing locally on localhost/127.0.0.1, check for local override
+  if (reqOrigin && (reqOrigin.includes('localhost') || reqOrigin.includes('127.0.0.1'))) {
+    if (process.env.GOOGLE_REDIRECT_URI_LOCAL) {
+      redirectUri = process.env.GOOGLE_REDIRECT_URI_LOCAL.trim();
+    }
+  }
 
   const missing: string[] = [];
   if (!clientId) missing.push('GOOGLE_CLIENT_ID');
@@ -55,60 +106,231 @@ export function getEnvConfig(reqOrigin?: string) {
 }
 
 /**
- * Securely load stored tokens from server filesystem
+ * Cookie parsing helper
  */
-export function getStoredTokens(): StoredDriveTokens | null {
-  try {
-    if (!fs.existsSync(TOKEN_FILE_PATH)) {
-      return null;
+export function parseCookies(cookieHeader?: string): Record<string, string> {
+  const list: Record<string, string> = {};
+  if (!cookieHeader) return list;
+  cookieHeader.split(';').forEach((cookie) => {
+    const parts = cookie.split('=');
+    if (parts.length >= 2) {
+      const name = parts[0].trim();
+      const val = parts.slice(1).join('=').trim();
+      try {
+        list[name] = decodeURIComponent(val);
+      } catch {
+        list[name] = val;
+      }
     }
-    const raw = fs.readFileSync(TOKEN_FILE_PATH, 'utf-8');
-    if (!raw.trim()) return null;
-    return JSON.parse(raw) as StoredDriveTokens;
-  } catch (err) {
-    console.warn('[GoogleAuth] Failed to read stored tokens:', err);
+  });
+  return list;
+}
+
+/**
+ * Cookie serialization helper
+ */
+export function serializeCookie(
+  name: string,
+  val: string,
+  options: {
+    maxAge?: number;
+    httpOnly?: boolean;
+    secure?: boolean;
+    path?: string;
+    sameSite?: 'Lax' | 'Strict' | 'None';
+  } = {}
+): string {
+  const opt = {
+    path: '/',
+    httpOnly: true,
+    sameSite: 'Lax' as const,
+    secure: process.env.NODE_ENV === 'production',
+    ...options,
+  };
+  let str = `${name}=${encodeURIComponent(val)}; Path=${opt.path}`;
+  if (opt.maxAge !== undefined) {
+    str += `; Max-Age=${Math.floor(opt.maxAge)}`;
+  }
+  if (opt.httpOnly) str += '; HttpOnly';
+  if (opt.secure) str += '; Secure';
+  if (opt.sameSite) str += `; SameSite=${opt.sameSite}`;
+  return str;
+}
+
+/**
+ * AES-256-GCM encryption for secure session cookie
+ */
+export function encryptTokenPayload(payload: StoredDriveTokens, clientSecret: string): string {
+  const key = crypto.createHash('sha256').update(clientSecret).digest();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  let encrypted = cipher.update(JSON.stringify(payload), 'utf8', 'base64');
+  encrypted += cipher.final('base64');
+  const authTag = cipher.getAuthTag();
+  return `${iv.toString('base64url')}.${authTag.toString('base64url')}.${Buffer.from(encrypted, 'base64').toString('base64url')}`;
+}
+
+/**
+ * AES-256-GCM decryption for secure session cookie
+ */
+export function decryptTokenPayload(tokenStr?: string, clientSecret?: string): StoredDriveTokens | null {
+  if (!tokenStr || !clientSecret) return null;
+  try {
+    const parts = tokenStr.split('.');
+    if (parts.length !== 3) return null;
+    const [ivB64, authTagB64, dataB64] = parts;
+    const key = crypto.createHash('sha256').update(clientSecret).digest();
+    const iv = Buffer.from(ivB64, 'base64url');
+    const authTag = Buffer.from(authTagB64, 'base64url');
+    const encrypted = Buffer.from(dataB64, 'base64url');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(authTag);
+    let decrypted = decipher.update(encrypted, undefined, 'utf8');
+    decrypted += decipher.final('utf8');
+    return JSON.parse(decrypted) as StoredDriveTokens;
+  } catch {
     return null;
   }
 }
 
 /**
- * Securely save tokens to server filesystem
+ * Generate cryptographically signed state token with CSRF nonce and returnTo path
+ */
+export function generateStateToken(clientSecret: string, returnTo = '/payment-proofs') {
+  const nonce = crypto.randomBytes(16).toString('hex');
+  const payload = JSON.stringify({ nonce, returnTo: returnTo || '/payment-proofs', t: Date.now() });
+  const payloadB64 = Buffer.from(payload).toString('base64url');
+  const sig = crypto.createHmac('sha256', clientSecret).update(payloadB64).digest('base64url');
+  return {
+    state: `${payloadB64}.${sig}`,
+    nonce,
+  };
+}
+
+/**
+ * Verify state parameter signature, timestamp expiry (15 mins), and CSRF protection
+ */
+export function verifyStateToken(state?: string | null, clientSecret?: string): {
+  valid: boolean;
+  returnTo: string;
+  error?: string;
+} {
+  if (!state || typeof state !== 'string') {
+    return { valid: false, returnTo: '/payment-proofs', error: 'Missing OAuth state parameter.' };
+  }
+  if (!clientSecret) {
+    return { valid: false, returnTo: '/payment-proofs', error: 'Server missing GOOGLE_CLIENT_SECRET.' };
+  }
+
+  const parts = state.split('.');
+  if (parts.length !== 2) {
+    return { valid: false, returnTo: '/payment-proofs', error: 'Malformed OAuth state parameter.' };
+  }
+
+  const [payloadB64, sig] = parts;
+  const expectedSig = crypto.createHmac('sha256', clientSecret).update(payloadB64).digest('base64url');
+
+  const sigBuf = Buffer.from(sig);
+  const expBuf = Buffer.from(expectedSig);
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    return { valid: false, returnTo: '/payment-proofs', error: 'CSRF token mismatch / invalid state signature.' };
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+    // State valid for 15 minutes (900 seconds)
+    if (Date.now() - payload.t > 15 * 60 * 1000) {
+      return { valid: false, returnTo: payload.returnTo || '/payment-proofs', error: 'OAuth state parameter has expired.' };
+    }
+    return { valid: true, returnTo: payload.returnTo || '/payment-proofs' };
+  } catch {
+    return { valid: false, returnTo: '/payment-proofs', error: 'Invalid state payload encoding.' };
+  }
+}
+
+/**
+ * Safely read tokens from server filesystem (local or /tmp)
+ */
+export function getStoredTokens(): StoredDriveTokens | null {
+  const tryPaths = [
+    path.join(LOCAL_DATA_DIR, TOKEN_FILE_NAME),
+    path.join(TMP_DATA_DIR, TOKEN_FILE_NAME),
+  ];
+
+  for (const p of tryPaths) {
+    try {
+      if (fs.existsSync(p)) {
+        const raw = fs.readFileSync(p, 'utf-8');
+        if (raw.trim()) {
+          return JSON.parse(raw) as StoredDriveTokens;
+        }
+      }
+    } catch {
+      // Continue to next path
+    }
+  }
+  return null;
+}
+
+/**
+ * Safely save tokens to filesystem, resilient to Vercel read-only cwd
  */
 export function saveStoredTokens(tokens: StoredDriveTokens): void {
+  // First attempt local data dir
+  let saved = false;
   try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
+    if (!fs.existsSync(LOCAL_DATA_DIR)) {
+      fs.mkdirSync(LOCAL_DATA_DIR, { recursive: true, mode: 0o700 });
     }
-    fs.writeFileSync(TOKEN_FILE_PATH, JSON.stringify(tokens, null, 2), {
+    fs.writeFileSync(path.join(LOCAL_DATA_DIR, TOKEN_FILE_NAME), JSON.stringify(tokens, null, 2), {
       encoding: 'utf-8',
       mode: 0o600,
     });
-  } catch (err) {
-    console.error('[GoogleAuth] Failed to save stored tokens:', err);
+    saved = true;
+  } catch {
+    // Expected on Vercel where process.cwd() is read-only
+  }
+
+  // Fallback to /tmp which is always writable on AWS Lambda / Vercel
+  if (!saved) {
+    try {
+      fs.writeFileSync(path.join(TMP_DATA_DIR, TOKEN_FILE_NAME), JSON.stringify(tokens, null, 2), {
+        encoding: 'utf-8',
+        mode: 0o600,
+      });
+    } catch (err) {
+      console.warn('[GoogleAuth] Failed to write token file to /tmp:', err);
+    }
   }
 }
 
 /**
- * Clear stored tokens from server filesystem
+ * Clear stored tokens from all filesystem locations
  */
 export function clearStoredTokens(): void {
-  try {
-    if (fs.existsSync(TOKEN_FILE_PATH)) {
-      fs.unlinkSync(TOKEN_FILE_PATH);
+  const paths = [
+    path.join(LOCAL_DATA_DIR, TOKEN_FILE_NAME),
+    path.join(TMP_DATA_DIR, TOKEN_FILE_NAME),
+  ];
+  for (const p of paths) {
+    try {
+      if (fs.existsSync(p)) {
+        fs.unlinkSync(p);
+      }
+    } catch {
+      // Ignore unlink errors
     }
-  } catch (err) {
-    console.warn('[GoogleAuth] Failed to delete token file:', err);
   }
 }
 
 /**
- * Generate Google OAuth 2.0 Authorization URL
+ * Generate Google OAuth 2.0 Authorization URL with CSRF protection and exact redirect URI
  */
-export function generateAuthUrl(origin: string, state = 'gdrive_auth') {
+export function generateAuthUrl(origin: string, state: string) {
   const config = getEnvConfig(origin);
   if (!config.clientId) {
     throw new Error(
-      'Missing GOOGLE_CLIENT_ID. Please configure it in your environment or .env file.'
+      'Missing GOOGLE_CLIENT_ID. Please configure it in your environment or Vercel Environment Variables.'
     );
   }
 
@@ -133,7 +355,7 @@ export async function exchangeCodeForTokens(code: string, origin: string) {
   const config = getEnvConfig(origin);
   if (!config.clientId || !config.clientSecret) {
     throw new Error(
-      `Missing Google Cloud credentials: ${config.missingConfig.join(', ')}. Set them in .env`
+      `Missing Google Cloud credentials: ${config.missingConfig.join(', ')}. Set them in server environment.`
     );
   }
 
@@ -193,22 +415,43 @@ export async function exchangeCodeForTokens(code: string, origin: string) {
     success: true,
     email: connectedEmail,
     expiresAt,
+    tokens: storedTokens,
   };
 }
 
 /**
- * Retrieve a valid Access Token, automatically refreshing if expired
+ * Retrieve a valid Access Token, checking encrypted cookie first, then filesystem,
+ * automatically refreshing using refresh_token if expired.
  */
-export async function getValidAccessToken(origin?: string): Promise<{
+export async function getValidAccessToken(
+  origin?: string,
+  req?: any
+): Promise<{
   accessToken: string;
   email?: string;
+  updatedCookie?: string;
 }> {
-  const stored = getStoredTokens();
+  const config = getEnvConfig(origin);
+  let stored: StoredDriveTokens | null = null;
+
+  // 1. Try decrypting from request cookie (stateless cross-lambda support on Vercel)
+  if (req?.headers?.cookie && config.clientSecret) {
+    const cookies = parseCookies(req.headers.cookie);
+    if (cookies.gdrive_session) {
+      stored = decryptTokenPayload(cookies.gdrive_session, config.clientSecret);
+    }
+  }
+
+  // 2. Fall back to filesystem storage
+  if (!stored || !stored.access_token) {
+    stored = getStoredTokens();
+  }
+
   if (!stored || !stored.access_token) {
     throw new Error('NO_TOKEN: Google Drive is not connected. Please authorize Google Drive first.');
   }
 
-  // If token is still valid (with 60-second safety cushion), return it
+  // 3. If token is still valid (with 60-second cushion), return it
   if (Date.now() < stored.expires_at - 60000) {
     return {
       accessToken: stored.access_token,
@@ -216,15 +459,14 @@ export async function getValidAccessToken(origin?: string): Promise<{
     };
   }
 
-  // Token is expired or about to expire; refresh using refresh_token
+  // 4. Token is expired or about to expire; refresh using refresh_token
   if (!stored.refresh_token) {
     clearStoredTokens();
     throw new Error(
-      'EXPIRED_NO_REFRESH: Google Drive session expired. Please reconnect Google Drive to grant offline access.'
+      'EXPIRED_NO_REFRESH: Google Drive session expired. Please click "Authorize Drive" to reconnect.'
     );
   }
 
-  const config = getEnvConfig(origin);
   if (!config.clientId || !config.clientSecret) {
     throw new Error(
       `Cannot refresh Google Drive token: Missing ${config.missingConfig.join(', ')} in server environment.`
@@ -267,17 +509,48 @@ export async function getValidAccessToken(origin?: string): Promise<{
 
   saveStoredTokens(updatedTokens);
 
+  // Generate updated encrypted session cookie for response header
+  let updatedCookie: string | undefined;
+  if (config.clientSecret) {
+    const isHttps = origin ? origin.startsWith('https') : process.env.NODE_ENV === 'production';
+    updatedCookie = serializeCookie(
+      'gdrive_session',
+      encryptTokenPayload(updatedTokens, config.clientSecret),
+      {
+        maxAge: 30 * 24 * 3600,
+        secure: isHttps,
+      }
+    );
+  }
+
   return {
     accessToken: updatedTokens.access_token,
     email: updatedTokens.connected_email,
+    updatedCookie,
   };
 }
 
 /**
  * Disconnect and revoke Google authorization
  */
-export async function disconnectGoogle(): Promise<{ success: boolean }> {
-  const stored = getStoredTokens();
+export async function disconnectGoogle(
+  origin?: string,
+  req?: any
+): Promise<{ success: boolean; clearCookie: string }> {
+  const config = getEnvConfig(origin);
+  let stored: StoredDriveTokens | null = null;
+
+  if (req?.headers?.cookie && config.clientSecret) {
+    const cookies = parseCookies(req.headers.cookie);
+    if (cookies.gdrive_session) {
+      stored = decryptTokenPayload(cookies.gdrive_session, config.clientSecret);
+    }
+  }
+
+  if (!stored) {
+    stored = getStoredTokens();
+  }
+
   if (stored?.access_token) {
     try {
       await fetch(
@@ -288,26 +561,41 @@ export async function disconnectGoogle(): Promise<{ success: boolean }> {
       // Ignore network errors on revocation
     }
   }
+
   clearStoredTokens();
-  return { success: true };
+
+  const clearCookie = serializeCookie('gdrive_session', '', { maxAge: 0 });
+  return { success: true, clearCookie };
 }
 
 /**
  * Fetch files from a Google Drive folder using the authenticated token
  */
 export async function listFolderFiles(
-  folderId: string,
-  origin?: string
+  folderIdInput: string,
+  origin?: string,
+  req?: any
 ): Promise<{
   success: boolean;
   folderId: string;
   files: DriveApiFile[];
   connectedEmail?: string;
   errorMessage?: string;
+  updatedCookie?: string;
 }> {
-  const { accessToken, email } = await getValidAccessToken(origin);
+  const cleanFolderId = extractCleanFolderId(folderIdInput);
+  if (!cleanFolderId) {
+    return {
+      success: false,
+      folderId: '',
+      files: [],
+      errorMessage: 'Invalid Google Drive folder ID format.',
+    };
+  }
 
-  const query = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
+  const { accessToken, email, updatedCookie } = await getValidAccessToken(origin, req);
+
+  const query = encodeURIComponent(`'${cleanFolderId}' in parents and trashed = false`);
   const fields = encodeURIComponent(
     'files(id, name, mimeType, size, webViewLink, webContentLink, thumbnailLink, modifiedTime)'
   );
@@ -335,9 +623,10 @@ export async function listFolderFiles(
 
     return {
       success: true,
-      folderId,
+      folderId: cleanFolderId,
       files,
       connectedEmail: email,
+      updatedCookie,
     };
   }
 
@@ -348,9 +637,10 @@ export async function listFolderFiles(
   if (response.status === 404) {
     return {
       success: false,
-      folderId,
+      folderId: cleanFolderId,
       files: [],
       connectedEmail: email,
+      updatedCookie,
       errorMessage: `Folder not found (404) or connected account "${email}" lacks access. Please verify folder ID and share Viewer access with ${email}.`,
     };
   }
@@ -358,28 +648,31 @@ export async function listFolderFiles(
   if (response.status === 403) {
     return {
       success: false,
-      folderId,
+      folderId: cleanFolderId,
       files: [],
       connectedEmail: email,
-      errorMessage: `Access Denied (403): Connected account "${email}" does not have permission to view folder "${folderId}". Please share the folder with ${email} in Google Drive.`,
+      updatedCookie,
+      errorMessage: `Access Denied (403): Connected account "${email}" does not have permission to view folder "${cleanFolderId}". Please share the folder with ${email} in Google Drive.`,
     };
   }
 
   if (response.status === 401) {
     return {
       success: false,
-      folderId,
+      folderId: cleanFolderId,
       files: [],
       connectedEmail: email,
+      updatedCookie,
       errorMessage: `Google Drive authorization is invalid or expired (401). Please click "Authorize Drive" to re-authenticate.`,
     };
   }
 
   return {
     success: false,
-    folderId,
+    folderId: cleanFolderId,
     files: [],
     connectedEmail: email,
+    updatedCookie,
     errorMessage: `Google Drive API error (${response.status}): ${googleMsg}`,
   };
 }
