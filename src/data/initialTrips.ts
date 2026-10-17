@@ -3,7 +3,7 @@ import { Trip } from '../types/index';
 export const initialTrips: Trip[] = [
   {
     id: 'trip-mumbai-pune-2026',
-    name: 'Mumbai & Pune',
+    name: 'Service Visit',
     startDate: '2026-08-20',
     endDate: '2026-09-03',
     locations: ['Mumbai', 'Pune'],

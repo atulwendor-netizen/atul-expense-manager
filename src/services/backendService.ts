@@ -73,9 +73,9 @@ export const GUEST_USER: UserProfile = {
 
 const STORAGE_KEYS = {
   CURRENT_USER: 'atul_cloud_current_user_v1',
-  EXPENSES: 'atul_cloud_expenses_v1',
+  EXPENSES: 'atul_cloud_expenses_v2',
   REIMBURSEMENTS: 'atul_cloud_reimbursements_v1',
-  TRIPS: 'atul_cloud_trips_v1',
+  TRIPS: 'atul_cloud_trips_v2',
   MEMBERS: 'atul_cloud_members_v1',
   INVITATIONS: 'atul_cloud_invitations_v1',
   AUDIT_LOGS: 'atul_cloud_audit_logs_v1',
@@ -746,7 +746,7 @@ class BackendService {
     this.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(updated));
   }
 
-  // --- EXPENSES (AUTHORITATIVE CLOUD PERSISTENCE) ---
+  // --- EXPENSES (AUTHORITATIVE CLOUD PERSISTENCE & BASELINE PRESERVATION) ---
   getExpenses(): Expense[] {
     this.enforceActiveMember();
     const raw = this.getItem(STORAGE_KEYS.EXPENSES);
@@ -755,8 +755,36 @@ class BackendService {
       return initialExpenses;
     }
     try {
-      return JSON.parse(raw);
+      const expenses: Expense[] = JSON.parse(raw);
+      if (!Array.isArray(expenses) || expenses.length === 0) {
+        this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(initialExpenses));
+        return initialExpenses;
+      }
+
+      let modified = false;
+
+      // Authoritative baseline check: Ensure all 78 baseline records exist and dates are preserved
+      for (const baseline of initialExpenses) {
+        const found = expenses.find((e) => e.id === baseline.id);
+        if (!found) {
+          expenses.push(baseline);
+          modified = true;
+        } else {
+          // Synchronize canonical date (e.g. 2026-10-12 for undated items)
+          if (baseline.date && found.date !== baseline.date) {
+            found.date = baseline.date;
+            modified = true;
+          }
+        }
+      }
+
+      if (modified) {
+        this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+      }
+
+      return expenses;
     } catch {
+      this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(initialExpenses));
       return initialExpenses;
     }
   }
@@ -944,8 +972,37 @@ class BackendService {
       return initialTrips;
     }
     try {
-      return JSON.parse(raw);
+      const trips: Trip[] = JSON.parse(raw);
+      if (!Array.isArray(trips) || trips.length === 0) {
+        this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(initialTrips));
+        return initialTrips;
+      }
+
+      let modified = false;
+      // Ensure 'trip-mumbai-pune-2026' has the canonical name 'Service Visit'
+      const updated = trips.map((t) => {
+        if (t.id === 'trip-mumbai-pune-2026' && t.name !== 'Service Visit') {
+          modified = true;
+          return { ...t, name: 'Service Visit' };
+        }
+        return t;
+      });
+
+      // Ensure all baseline trips are present
+      for (const initTrip of initialTrips) {
+        if (!updated.some((t) => t.id === initTrip.id)) {
+          updated.push(initTrip);
+          modified = true;
+        }
+      }
+
+      if (modified) {
+        this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(updated));
+      }
+
+      return updated;
     } catch {
+      this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(initialTrips));
       return initialTrips;
     }
   }
@@ -1159,7 +1216,7 @@ class BackendService {
         {
           id: 'conv-mumbai-trip',
           workspaceId: DEFAULT_WORKSPACE.id,
-          title: 'Mumbai & Pune Trip Coordination',
+          title: 'Service Visit Trip Coordination',
           type: 'trip',
           relatedId: 'trip-mumbai-pune-2026',
           createdBy: INITIAL_OWNER.id,
@@ -1169,7 +1226,7 @@ class BackendService {
           lastMessage: {
             id: 'msg-seed-trip-01',
             senderName: 'Atul',
-            content: 'Starting the Mumbai-Pune official visit. All transit tickets will be logged daily.',
+            content: 'Starting the Service Visit official travel. All transit tickets will be logged daily.',
             createdAt: '2026-08-22T10:15:00Z',
           },
           unreadCount: 0,

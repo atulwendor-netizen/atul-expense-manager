@@ -1565,7 +1565,7 @@ export const initialExpenses: Expense[] = [
   },
   {
     "id": "exp-072",
-    "date": "",
+    "date": "2026-10-12",
     "description": "iffco chowk to dwarka sector 10",
     "category": "Transit",
     "amount": 64.0,
@@ -1587,7 +1587,7 @@ export const initialExpenses: Expense[] = [
   },
   {
     "id": "exp-073",
-    "date": "",
+    "date": "2026-10-12",
     "description": "dwarka 11 to iffco chowk",
     "category": "Transit",
     "amount": 64.0,
@@ -1609,7 +1609,7 @@ export const initialExpenses: Expense[] = [
   },
   {
     "id": "exp-074",
-    "date": "",
+    "date": "2026-10-12",
     "description": "iffco chowk to office",
     "category": "Uncategorized",
     "amount": 30.0,
@@ -1653,7 +1653,7 @@ export const initialExpenses: Expense[] = [
   },
   {
     "id": "exp-076",
-    "date": "",
+    "date": "2026-10-12",
     "description": "porter payment",
     "category": "Porter",
     "amount": 82.0,
@@ -1675,7 +1675,7 @@ export const initialExpenses: Expense[] = [
   },
   {
     "id": "exp-077",
-    "date": "",
+    "date": "2026-10-12",
     "description": "office to grabbit location",
     "category": "Transit",
     "amount": 107.0,
@@ -1697,7 +1697,7 @@ export const initialExpenses: Expense[] = [
   },
   {
     "id": "exp-078",
-    "date": "",
+    "date": "2026-10-12",
     "description": "grabbit to home",
     "category": "Transit",
     "amount": 50.0,
