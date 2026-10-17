@@ -15,6 +15,7 @@ import {
   TrendingUp,
   Receipt,
   MessageSquare,
+  FileCheck,
 } from 'lucide-react';
 
 interface ReimbursementsPageProps {
@@ -28,6 +29,7 @@ interface ReimbursementsPageProps {
   onDeleteReimbursement: (id: string) => void;
   onDiscussReimbursement?: (reimbursement: Reimbursement) => void;
   onNotify: (type: 'success' | 'warning' | 'info' | 'error', text: string) => void;
+  onNavigateTab?: (tab: string) => void;
   isManager?: boolean;
 }
 
@@ -42,6 +44,7 @@ export const ReimbursementsPage: React.FC<ReimbursementsPageProps> = ({
   onDeleteReimbursement,
   onDiscussReimbursement,
   onNotify,
+  onNavigateTab,
   isManager = false,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -147,15 +150,27 @@ export const ReimbursementsPage: React.FC<ReimbursementsPageProps> = ({
           </p>
         </div>
 
-        {!isManager && (
-          <button
-            onClick={onAddReimbursement}
-            className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-emerald-500/20 hover:bg-emerald-700 transition-colors self-start sm:self-auto"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Record Reimbursement</span>
-          </button>
-        )}
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          {onNavigateTab && (
+            <button
+              onClick={() => onNavigateTab('payment-proofs')}
+              className="flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50/70 px-3.5 py-2 text-xs font-semibold text-blue-700 shadow-sm hover:bg-blue-100 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300 transition-colors"
+            >
+              <FileCheck className="h-4 w-4 text-blue-600" />
+              <span>Payment Proofs</span>
+            </button>
+          )}
+
+          {!isManager && (
+            <button
+              onClick={onAddReimbursement}
+              className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-emerald-500/20 hover:bg-emerald-700 transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Record Reimbursement</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Dynamic Summary Cards */}

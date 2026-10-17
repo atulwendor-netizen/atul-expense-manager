@@ -496,6 +496,7 @@ export function App() {
               onDeleteReimbursement={handleDeleteReimbursement}
               onDiscussReimbursement={openReimbursementDiscussion}
               onNotify={addToast}
+              onNavigateTab={handleSelectTab}
               isManager={isManager}
             />
           )}
