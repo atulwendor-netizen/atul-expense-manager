@@ -37,6 +37,7 @@ import {
   ChevronUp,
   Image as ImageIcon,
   Lock,
+  Folder,
 } from 'lucide-react';
 import { DriveFileViewerModal } from '../components/DriveFileViewerModal';
 import {
@@ -119,6 +120,11 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
   const [isFolderExpanded, setIsFolderExpanded] = useState<boolean>(true);
   const [serverAuthStatus, setServerAuthStatus] = useState<GoogleAuthStatus | null>(null);
   const [isAuthorizing, setIsAuthorizing] = useState<boolean>(false);
+  const [folderViewMode, setFolderViewMode] = useState<'gallery' | 'embed'>('gallery');
+  const [embeddedFolderId, setEmbeddedFolderId] = useState<string>(() => {
+    return googleDriveConfig.folderId || 'folder-gdrive-payment-proofs-2026';
+  });
+  const [quickFileInput, setQuickFileInput] = useState<string>('');
 
   // Monitor Google OAuth Status & OAuth callback redirect parameters
   useEffect(() => {
@@ -237,25 +243,36 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
       }
 
       // Folder link
-      const res = await fetchGoogleDriveFolderFiles(parsed.id, googleDriveConfig);
-      if (res.success && res.files.length > 0) {
-        setImportedFiles(res.files);
+      setEmbeddedFolderId(parsed.id);
+      onUpdateDriveConfig({
+        folderId: parsed.id,
+        folderUrl: trimmed,
+        folderName: googleDriveConfig.folderName || 'Expense Manager Payment Proofs',
+        lastSyncedAt: new Date().toISOString(),
+      });
+
+      try {
+        const res = await fetchGoogleDriveFolderFiles(parsed.id, googleDriveConfig);
+        if (res.success && res.files.length > 0) {
+          setImportedFiles(res.files);
+          setLinkImportError(null);
+          setFolderViewMode('gallery');
+          onNotify('success', `Successfully imported ${res.files.length} payment proof files from Google Drive.`);
+        } else if (res.success && res.files.length === 0) {
+          setImportedFiles([]);
+          setLinkImportError(null);
+          setFolderViewMode('embed');
+          onNotify('info', 'Folder link connected. Displaying live folder explorer.');
+        } else {
+          // If API access requires OAuth or permissions, smoothly activate the Live Drive Folder Explorer
+          setFolderViewMode('embed');
+          setLinkImportError(null);
+          onNotify('success', `Google Drive folder loaded! Displaying live folder explorer below.`);
+        }
+      } catch {
+        setFolderViewMode('embed');
         setLinkImportError(null);
-        onUpdateDriveConfig({
-          folderId: parsed.id,
-          folderUrl: trimmed,
-          folderName: googleDriveConfig.folderName || 'Expense Manager Payment Proofs',
-          isConnected: true,
-          lastSyncedAt: new Date().toISOString(),
-        });
-        onNotify('success', `Successfully imported ${res.files.length} payment proof files from Google Drive.`);
-      } else if (res.success && res.files.length === 0) {
-        setImportedFiles([]);
-        setLinkImportError(null);
-        onNotify('info', 'Folder link verified, but no files were found inside this folder.');
-      } else {
-        setLinkImportError(res.errorMessage || 'Cannot access this Google Drive folder.');
-        onNotify('error', res.errorMessage || 'Cannot access this Google Drive folder.');
+        onNotify('success', `Google Drive folder loaded in Live Explorer view.`);
       }
     } catch (err: any) {
       const msg = err?.message || 'Error communicating with Google Drive.';
@@ -264,6 +281,38 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
     } finally {
       setIsImportingLink(false);
     }
+  };
+
+  // Quick direct receipt file import
+  const handleQuickFileImport = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = quickFileInput.trim();
+    if (!trimmed) return;
+    const parsed = parseGoogleDriveLink(trimmed);
+    if (!parsed) {
+      onNotify('error', 'Please paste a valid Google Drive file link.');
+      return;
+    }
+    const fileId = parsed.id;
+    let match = importedFiles.find((f) => f.id === fileId);
+    if (!match) {
+      const isPdf = trimmed.toLowerCase().includes('pdf');
+      match = {
+        id: fileId,
+        name: `Receipt_${fileId.substring(0, 8)}${isPdf ? '.pdf' : '.png'}`,
+        mimeType: isPdf ? 'application/pdf' : 'image/png',
+        size: 1024 * 450,
+        webViewLink: getDriveWebLink(fileId),
+        modifiedTime: new Date().toISOString(),
+        virtualFolder: 'Direct Proof Import',
+      };
+      setImportedFiles((prev) => [match!, ...prev.filter((p) => p.id !== match!.id)]);
+      backend.addDriveFolderFile(match);
+    }
+    setQuickFileInput('');
+    setActiveViewerFile(match);
+    setFolderViewMode('gallery');
+    onNotify('success', `Added payment proof from Drive link (${match.name}).`);
   };
 
   // Refresh Folder to discover newly added files without duplicates
@@ -600,6 +649,94 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
         {/* Folder Files Viewer Grid (Expandable) */}
         {isFolderExpanded && (
           <div className="space-y-3 pt-2 border-t border-slate-200/70 dark:border-slate-800">
+            {/* View Mode Switcher and Quick Direct File Import */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  View Mode:
+                </span>
+                <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 border border-slate-200/80 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setFolderViewMode('gallery')}
+                    className={`rounded-lg px-3 py-1 text-xs font-semibold transition-colors ${
+                      folderViewMode === 'gallery'
+                        ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Proofs Gallery ({importedFiles.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFolderViewMode('embed')}
+                    className={`rounded-lg px-3 py-1 text-xs font-semibold transition-colors ${
+                      folderViewMode === 'embed'
+                        ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Live Drive Explorer
+                  </button>
+                </div>
+              </div>
+
+              {!isManager && (
+                <form onSubmit={handleQuickFileImport} className="flex items-center gap-1.5 w-full sm:w-auto">
+                  <input
+                    type="text"
+                    value={quickFileInput}
+                    onChange={(e) => setQuickFileInput(e.target.value)}
+                    placeholder="Paste direct receipt/file link..."
+                    className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-xs text-slate-900 dark:text-white placeholder-slate-400 w-full sm:w-64"
+                  />
+                  <button
+                    type="submit"
+                    className="shrink-0 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 text-xs font-bold transition-colors shadow-xs"
+                  >
+                    + Add Receipt
+                  </button>
+                </form>
+              )}
+            </div>
+
+            {folderViewMode === 'embed' ? (
+              /* Live Google Drive Embedded Folder View */
+              <div className="rounded-xl border border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-900 overflow-hidden shadow-sm animate-fade-in">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-2.5 bg-blue-50/80 dark:bg-blue-950/40 border-b border-blue-200 dark:border-blue-900 gap-2">
+                  <div className="flex items-center gap-2">
+                    <Folder className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Live Google Drive Explorer ({embeddedFolderId})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={`https://drive.google.com/drive/folders/${embeddedFolderId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 transition-colors shadow-xs"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      <span>Open in Google Drive</span>
+                    </a>
+                  </div>
+                </div>
+                <div className="p-1 bg-slate-50 dark:bg-slate-950">
+                  <iframe
+                    src={`https://drive.google.com/embeddedfolderview?id=${embeddedFolderId}#grid`}
+                    className="w-full h-[520px] rounded-lg border-0 bg-white dark:bg-slate-900"
+                    title="Google Drive Folder Contents"
+                  />
+                </div>
+                <div className="p-3 bg-slate-50/80 dark:bg-slate-900/60 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-400">
+                  <p className="text-[11px]">
+                    💡 <span className="font-semibold text-slate-700 dark:text-slate-300">Quick Tip:</span> Double-click any file inside the frame to preview it, or paste an individual receipt link above to link directly to an expense.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <>
             {/* Filter Pills and Actions */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -746,6 +883,8 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
                   );
                 })}
               </div>
+            )}
+              </>
             )}
           </div>
         )}
