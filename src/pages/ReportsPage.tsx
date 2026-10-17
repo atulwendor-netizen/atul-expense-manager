@@ -161,7 +161,7 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
   const selectedTripObj = trips.find((t) => t.id === selectedTrip);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-dashboard-fade">
       {/* Page Header (No-print) */}
       <div className="no-print flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>

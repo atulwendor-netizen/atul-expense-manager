@@ -8,6 +8,7 @@ import { TopExpenses } from '../components/TopExpenses';
 import { ReimbursementSummaryCard } from '../components/ReimbursementSummaryCard';
 import { CurrentTripSummary } from '../components/CurrentTripSummary';
 import { formatCurrency } from '../utils/calculations';
+import { useScrollReveal } from '../hooks/useScrollReveal';
 import {
   Wallet,
   CheckCircle,
@@ -52,8 +53,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const isAllTrips = activeTripId === 'all';
   const scopeLabel = isAllTrips ? 'All Trips' : currentTrip?.name || 'Selected Trip';
 
+  // Smooth scroll-reveal observers for dashboard sections
+  const cardsReveal = useScrollReveal({ threshold: 0.05 });
+  const chartsReveal = useScrollReveal({ threshold: 0.1 });
+  const secondaryReveal = useScrollReveal({ threshold: 0.1 });
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-dashboard-fade">
       {/* Scope Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-slate-200/60 dark:border-slate-800/60">
         <div>
@@ -137,85 +143,103 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         onManageTrips={() => onNavigateTab('trips')}
       />
 
-      {/* 6 Core Dashboard KPI Summary Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      {/* 6 Core Dashboard KPI Summary Cards with Staggered Entrance */}
+      <div 
+        ref={cardsReveal.ref}
+        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
+      >
         {/* 1. Total Expense */}
-        <SummaryCard
-          title="Total Expense"
-          value={formatCurrency(metrics.totalExpense)}
-          subtitle={isAllTrips ? 'Overall spending' : `${currentTrip?.name} spend`}
-          icon={Wallet}
-          accentColor="brand"
-          badge={{ text: 'Verified', variant: 'info' }}
-          onClick={() => onNavigateTab('expenses')}
-        />
+        <div className={`scroll-reveal stagger-1 ${cardsReveal.isRevealed ? 'is-revealed' : ''}`}>
+          <SummaryCard
+            title="Total Expense"
+            value={formatCurrency(metrics.totalExpense)}
+            subtitle={isAllTrips ? 'Overall spending' : `${currentTrip?.name} spend`}
+            icon={Wallet}
+            accentColor="brand"
+            badge={{ text: 'Verified', variant: 'info' }}
+            onClick={() => onNavigateTab('expenses')}
+          />
+        </div>
 
         {/* 2. Total Reimbursement */}
-        <SummaryCard
-          title="Reimbursement"
-          value={formatCurrency(metrics.totalReimbursement)}
-          subtitle={reimbursements.length > 0 ? `${reimbursements.length} payment${reimbursements.length > 1 ? 's' : ''} logged` : 'No payments yet'}
-          icon={CheckCircle}
-          accentColor="emerald"
-          badge={{
-            text: reimbursements.length > 0 ? `${reimbursements.length} Logged` : 'None',
-            variant: reimbursements.length > 0 ? 'success' : 'neutral',
-          }}
-          onClick={() => onNavigateTab('reimbursements')}
-        />
+        <div className={`scroll-reveal stagger-2 ${cardsReveal.isRevealed ? 'is-revealed' : ''}`}>
+          <SummaryCard
+            title="Reimbursement"
+            value={formatCurrency(metrics.totalReimbursement)}
+            subtitle={reimbursements.length > 0 ? `${reimbursements.length} payment${reimbursements.length > 1 ? 's' : ''} logged` : 'No payments yet'}
+            icon={CheckCircle}
+            accentColor="emerald"
+            badge={{
+              text: reimbursements.length > 0 ? `${reimbursements.length} Logged` : 'None',
+              variant: reimbursements.length > 0 ? 'success' : 'neutral',
+            }}
+            onClick={() => onNavigateTab('reimbursements')}
+          />
+        </div>
 
         {/* 3. Pending Reimbursement */}
-        <SummaryCard
-          title="Pending Amount"
-          value={formatCurrency(metrics.pendingReimbursement)}
-          subtitle="Expense - Reimbursement"
-          icon={Clock}
-          accentColor="amber"
-          badge={{
-            text: metrics.pendingReimbursement === 0 ? 'Cleared' : 'Awaiting',
-            variant: metrics.pendingReimbursement === 0 ? 'success' : 'warning',
-          }}
-          onClick={() => onNavigateTab('reimbursements')}
-        />
+        <div className={`scroll-reveal stagger-3 ${cardsReveal.isRevealed ? 'is-revealed' : ''}`}>
+          <SummaryCard
+            title="Pending Amount"
+            value={formatCurrency(metrics.pendingReimbursement)}
+            subtitle="Expense - Reimbursement"
+            icon={Clock}
+            accentColor="amber"
+            badge={{
+              text: metrics.pendingReimbursement === 0 ? 'Cleared' : 'Awaiting',
+              variant: metrics.pendingReimbursement === 0 ? 'success' : 'warning',
+            }}
+            onClick={() => onNavigateTab('reimbursements')}
+          />
+        </div>
 
         {/* 4. Total Transactions */}
-        <SummaryCard
-          title="Transactions"
-          value={metrics.totalTransactions}
-          subtitle="Itemized valid entries"
-          icon={Receipt}
-          accentColor="violet"
-          badge={{
-            text: metrics.incompleteTransactions > 0 ? `+${metrics.incompleteTransactions} draft` : 'All valid',
-            variant: metrics.incompleteTransactions > 0 ? 'warning' : 'neutral',
-          }}
-          onClick={() => onNavigateTab('expenses')}
-        />
+        <div className={`scroll-reveal stagger-4 ${cardsReveal.isRevealed ? 'is-revealed' : ''}`}>
+          <SummaryCard
+            title="Transactions"
+            value={metrics.totalTransactions}
+            subtitle="Itemized valid entries"
+            icon={Receipt}
+            accentColor="violet"
+            badge={{
+              text: metrics.incompleteTransactions > 0 ? `+${metrics.incompleteTransactions} draft` : 'All valid',
+              variant: metrics.incompleteTransactions > 0 ? 'warning' : 'neutral',
+            }}
+            onClick={() => onNavigateTab('expenses')}
+          />
+        </div>
 
         {/* 5. Trip Duration */}
-        <SummaryCard
-          title="Trip Duration"
-          value={`${metrics.tripDurationDays} Days`}
-          subtitle={`${metrics.activeSpendingDays} active spending days`}
-          icon={Calendar}
-          accentColor="indigo"
-          badge={{ text: scopeLabel, variant: 'neutral' }}
-          onClick={() => onNavigateTab('trips')}
-        />
+        <div className={`scroll-reveal stagger-5 ${cardsReveal.isRevealed ? 'is-revealed' : ''}`}>
+          <SummaryCard
+            title="Trip Duration"
+            value={`${metrics.tripDurationDays} Days`}
+            subtitle={`${metrics.activeSpendingDays} active spending days`}
+            icon={Calendar}
+            accentColor="indigo"
+            badge={{ text: scopeLabel, variant: 'neutral' }}
+            onClick={() => onNavigateTab('trips')}
+          />
+        </div>
 
         {/* 6. Canonical Daily Average */}
-        <SummaryCard
-          title="Daily Average"
-          value={formatCurrency(metrics.dailyAverage)}
-          subtitle={`Total / ${metrics.activeSpendingDays} active day${metrics.activeSpendingDays > 1 ? 's' : ''}`}
-          icon={TrendingDown}
-          accentColor="rose"
-          badge={{ text: `≈ ${formatCurrency(metrics.dailyAverage)}/day`, variant: 'neutral' }}
-        />
+        <div className={`scroll-reveal stagger-6 ${cardsReveal.isRevealed ? 'is-revealed' : ''}`}>
+          <SummaryCard
+            title="Daily Average"
+            value={formatCurrency(metrics.dailyAverage)}
+            subtitle={`Total / ${metrics.activeSpendingDays} active day${metrics.activeSpendingDays > 1 ? 's' : ''}`}
+            icon={TrendingDown}
+            accentColor="rose"
+            badge={{ text: `≈ ${formatCurrency(metrics.dailyAverage)}/day`, variant: 'neutral' }}
+          />
+        </div>
       </div>
 
       {/* Visual Analytics Row: Trend Chart & Category Breakdown */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div 
+        ref={chartsReveal.ref}
+        className={`grid grid-cols-1 gap-6 lg:grid-cols-3 scroll-reveal ${chartsReveal.isRevealed ? 'is-revealed' : ''}`}
+      >
         <div className="lg:col-span-2">
           <ExpenseTrendChart expenses={expenses} />
         </div>
@@ -225,8 +249,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       </div>
 
       {/* Secondary Dashboard Row: Reimbursement Summary, Top Expenses, Recent Expenses */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div>
+      <div 
+        ref={secondaryReveal.ref}
+        className="grid grid-cols-1 gap-6 lg:grid-cols-3"
+      >
+        <div className={`scroll-reveal stagger-1 ${secondaryReveal.isRevealed ? 'is-revealed' : ''}`}>
           <ReimbursementSummaryCard
             totalExpense={metrics.totalExpense}
             totalReimbursement={metrics.totalReimbursement}
@@ -237,7 +264,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           />
         </div>
 
-        <div>
+        <div className={`scroll-reveal stagger-2 ${secondaryReveal.isRevealed ? 'is-revealed' : ''}`}>
           <TopExpenses
             expenses={expenses}
             onSelectExpense={(exp) => {
@@ -250,7 +277,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           />
         </div>
 
-        <div>
+        <div className={`scroll-reveal stagger-3 ${secondaryReveal.isRevealed ? 'is-revealed' : ''}`}>
           <RecentExpenses
             expenses={expenses}
             onViewAll={() => onNavigateTab('expenses')}

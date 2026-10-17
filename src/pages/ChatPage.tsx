@@ -174,7 +174,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
   };
 
   return (
-    <div className="flex h-[calc(100vh-8.5rem)] rounded-3xl border border-slate-200/80 bg-white shadow-xs dark:border-slate-800/80 dark:bg-slate-900 overflow-hidden">
+    <div className="flex h-[calc(100vh-8.5rem)] rounded-3xl border border-slate-200/80 bg-white shadow-xs dark:border-slate-800/80 dark:bg-slate-900 overflow-hidden animate-dashboard-fade">
       {/* ------------------------------------------------------------- */}
       {/* LEFT PANEL: CONVERSATIONS LIST */}
       {/* ------------------------------------------------------------- */}

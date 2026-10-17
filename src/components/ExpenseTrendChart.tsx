@@ -145,6 +145,9 @@ export const ExpenseTrendChart: React.FC<ExpenseTrendChartProps> = ({ expenses }
               strokeWidth={2.5}
               fillOpacity={1}
               fill="url(#spendGradient)"
+              isAnimationActive={true}
+              animationDuration={700}
+              animationEasing="ease-out"
             />
           </AreaChart>
         </ResponsiveContainer>

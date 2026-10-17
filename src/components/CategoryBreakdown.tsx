@@ -72,6 +72,9 @@ export const CategoryBreakdown: React.FC<CategoryBreakdownProps> = ({ expenses }
               outerRadius={80}
               paddingAngle={3}
               dataKey="amount"
+              isAnimationActive={true}
+              animationDuration={700}
+              animationEasing="ease-out"
             >
               {data.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={entry.color} />
