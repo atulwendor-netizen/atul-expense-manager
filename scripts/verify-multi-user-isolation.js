@@ -222,10 +222,29 @@ try {
     'Owner does not see Alice or Bob private expenses'
   );
 
-  // F. Direct Password Reset Verification
-  console.log('\n   F. Testing In-App Direct Password Reset & Updated Credential Sign In:');
-  const resetAlice = await backend.resetPassword('alice@testcorp.com', 'NewAlicePassword999!');
-  assert(resetAlice.success === true, 'Alice password reset succeeded');
+  // F. Verified Token-Based Password Reset Flow
+  console.log('\n   F. Testing Verified Token-Based Password Reset & Updated Credential Sign In:');
+  const reqResetAlice = await backend.requestPasswordReset('alice@testcorp.com');
+  assert(reqResetAlice.success === true, 'Alice request for password reset succeeded');
+  assert(Boolean(reqResetAlice.resetUrl || reqResetAlice.token), 'Generated verified reset URL with security token');
+
+  // Attempt password reset with tampered/invalid token -> MUST FAIL
+  const forgedReset = await backend.confirmPasswordReset({
+    email: 'alice@testcorp.com',
+    newPassword: 'HackedPassword123!',
+    token: 'rst_forged_invalid_token',
+    expires: Date.now() + 3600000,
+  });
+  assert(forgedReset.success === false, 'Tampered/forged token strictly rejected');
+
+  // Legitimate token confirmation
+  const resetAlice = await backend.confirmPasswordReset({
+    email: 'alice@testcorp.com',
+    newPassword: 'NewAlicePassword999!',
+    token: reqResetAlice.token,
+    expires: reqResetAlice.expires,
+  });
+  assert(resetAlice.success === true, 'Alice password reset with verified token succeeded');
 
   // Attempt login with old password
   const oldLogin = await backend.loginWithCredentials('alice@testcorp.com', 'AliceSecret123!');

@@ -341,9 +341,35 @@ export function useExpenseData() {
     [refreshState]
   );
 
-  const resetPassword = useCallback(async (email: string, newPassword?: string) => {
-    return await backend.resetPassword(email, newPassword);
+  const resetPassword = useCallback(
+    async (
+      email: string,
+      newPassword?: string,
+      token?: string,
+      expires?: number,
+      oobCode?: string
+    ) => {
+      return await backend.resetPassword(email, newPassword, token, expires, oobCode);
+    },
+    []
+  );
+
+  const requestPasswordReset = useCallback(async (email: string) => {
+    return await backend.requestPasswordReset(email);
   }, []);
+
+  const confirmPasswordReset = useCallback(
+    async (params: {
+      email: string;
+      newPassword: string;
+      token?: string;
+      expires?: number;
+      oobCode?: string;
+    }) => {
+      return await backend.confirmPasswordReset(params);
+    },
+    []
+  );
 
   const logout = useCallback(() => {
     backend.logout();
@@ -619,6 +645,8 @@ export function useExpenseData() {
     loginWithCredentials,
     registerWithCredentials,
     resetPassword,
+    requestPasswordReset,
+    confirmPasswordReset,
     logout,
     members,
     invitations,

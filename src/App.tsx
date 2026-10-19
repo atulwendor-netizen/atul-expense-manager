@@ -33,6 +33,8 @@ export function App() {
     loginWithCredentials,
     registerWithCredentials,
     resetPassword,
+    requestPasswordReset,
+    confirmPasswordReset,
     logout,
     members,
     invitations,
@@ -417,9 +419,14 @@ export function App() {
             const res = await registerWithCredentials(name, email, password);
             return res;
           }}
-          onResetPassword={async (email, newPassword) => {
-            const res = await resetPassword(email, newPassword);
-            return res;
+          onRequestPasswordReset={async (email) => {
+            return await requestPasswordReset(email);
+          }}
+          onConfirmPasswordReset={async (params) => {
+            return await confirmPasswordReset(params);
+          }}
+          onResetPassword={async (email, newPassword, token, expires, oobCode) => {
+            return await resetPassword(email, newPassword, token, expires, oobCode);
           }}
           onNotify={addToast}
           isDarkMode={isDarkMode}
