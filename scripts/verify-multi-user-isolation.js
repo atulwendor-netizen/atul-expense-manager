@@ -222,8 +222,22 @@ try {
     'Owner does not see Alice or Bob private expenses'
   );
 
-  // F. Logout Session Purge
-  console.log('\n   F. Testing Logout & State Purge:');
+  // F. Direct Password Reset Verification
+  console.log('\n   F. Testing In-App Direct Password Reset & Updated Credential Sign In:');
+  const resetAlice = await backend.resetPassword('alice@testcorp.com', 'NewAlicePassword999!');
+  assert(resetAlice.success === true, 'Alice password reset succeeded');
+
+  // Attempt login with old password
+  const oldLogin = await backend.loginWithCredentials('alice@testcorp.com', 'AliceSecret123!');
+  assert(oldLogin.success === false, 'Old password rejected after password reset');
+
+  // Attempt login with new password
+  const newLogin = await backend.loginWithCredentials('alice@testcorp.com', 'NewAlicePassword999!');
+  assert(newLogin.success === true, 'Login with new updated password succeeded');
+  assert(newLogin.user.email === 'alice@testcorp.com', 'Authenticated as Alice');
+
+  // G. Logout Session Purge
+  console.log('\n   G. Testing Logout & State Purge:');
   backend.logout();
   assert(backend.isAuthenticated() === false, 'Session successfully purged on logout');
   assert(backend.getExpenses().length === 0, 'getExpenses returns [] after logout');

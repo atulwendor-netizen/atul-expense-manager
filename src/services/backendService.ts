@@ -392,6 +392,17 @@ class BackendService {
 
     // 1. Owner account login
     if (isOwnerEmail(cleanEmail)) {
+      const ownerPassHash = this.getItem('atul_owner_password_hash');
+      if (ownerPassHash && password) {
+        const expected = hashPasswordSync(password);
+        if (ownerPassHash !== expected) {
+          return {
+            success: false,
+            error: 'Incorrect password for Owner account. Please try again or reset it in the Recovery tab.',
+          };
+        }
+      }
+
       this.currentUser = INITIAL_OWNER;
       this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(INITIAL_OWNER));
 
@@ -614,10 +625,49 @@ class BackendService {
     };
   }
 
-  async resetPassword(email: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  async resetPassword(
+    email: string,
+    newPassword?: string
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) {
       return { success: false, error: 'Please enter a valid email address.' };
+    }
+
+    const isOwner = isOwnerEmail(cleanEmail);
+    const registeredUsers = this.getRegisteredUsers();
+    const userIndex = registeredUsers.findIndex((u) => u.email.toLowerCase() === cleanEmail);
+
+    if (!isOwner && userIndex === -1) {
+      return {
+        success: false,
+        error: 'No registered account found with this email address.',
+      };
+    }
+
+    if (newPassword) {
+      if (newPassword.length < 6) {
+        return {
+          success: false,
+          error: 'New password must be at least 6 characters long.',
+        };
+      }
+
+      const passwordHash = hashPasswordSync(newPassword);
+
+      if (isOwner) {
+        this.setItem('atul_owner_password_hash', passwordHash);
+      }
+
+      if (userIndex !== -1) {
+        registeredUsers[userIndex].passwordHash = passwordHash;
+        this.saveRegisteredUsers(registeredUsers);
+      }
+
+      return {
+        success: true,
+        message: 'Password successfully updated! You can now sign in with your new password.',
+      };
     }
 
     if (isFirebaseConfigured()) {
@@ -635,18 +685,9 @@ class BackendService {
       }
     }
 
-    const registeredUsers = this.getRegisteredUsers();
-    const user = registeredUsers.find((u) => u.email.toLowerCase() === cleanEmail);
-    if (user || isOwnerEmail(cleanEmail)) {
-      return {
-        success: true,
-        message: `Password recovery verification dispatched to ${cleanEmail}. Please follow the link sent to your inbox to reset your password.`,
-      };
-    }
-
     return {
-      success: false,
-      error: 'No registered account found with this email address.',
+      success: true,
+      message: 'Enter your new password below to reset your credentials instantly.',
     };
   }
 

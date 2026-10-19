@@ -341,8 +341,8 @@ export function useExpenseData() {
     [refreshState]
   );
 
-  const resetPassword = useCallback(async (email: string) => {
-    return await backend.resetPassword(email);
+  const resetPassword = useCallback(async (email: string, newPassword?: string) => {
+    return await backend.resetPassword(email, newPassword);
   }, []);
 
   const logout = useCallback(() => {

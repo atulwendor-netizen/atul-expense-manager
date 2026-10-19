@@ -417,8 +417,8 @@ export function App() {
             const res = await registerWithCredentials(name, email, password);
             return res;
           }}
-          onResetPassword={async (email) => {
-            const res = await resetPassword(email);
+          onResetPassword={async (email, newPassword) => {
+            const res = await resetPassword(email, newPassword);
             return res;
           }}
           onNotify={addToast}

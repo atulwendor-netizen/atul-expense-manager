@@ -17,7 +17,7 @@ import {
 interface PublicAuthPortalProps {
   onLogin: (email: string, password: string) => Promise<{ success: boolean; user?: any; error?: string }>;
   onRegister: (name: string, email: string, password: string) => Promise<{ success: boolean; user?: any; error?: string }>;
-  onResetPassword: (email: string) => Promise<{ success: boolean; message?: string; error?: string }>;
+  onResetPassword: (email: string, newPassword?: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   onNotify: (type: 'success' | 'warning' | 'info' | 'error', text: string) => void;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
@@ -125,21 +125,36 @@ export const PublicAuthPortal: React.FC<PublicAuthPortalProps> = ({
 
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) {
-      setErrorMessage('Please enter a valid email address to receive recovery instructions.');
+      setErrorMessage('Please enter a valid email address.');
+      return;
+    }
+
+    if (!password || password.length < 6) {
+      setErrorMessage('Please enter a new password of at least 6 characters.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setErrorMessage('New password and confirmation password do not match.');
       return;
     }
 
     setIsLoading(true);
     try {
-      const res = await onResetPassword(cleanEmail);
+      const res = await onResetPassword(cleanEmail, password);
       if (res.success) {
-        setSuccessMessage(res.message || 'Password reset instructions have been dispatched.');
-        onNotify('info', 'Password reset instructions sent.');
+        setSuccessMessage(res.message || 'Password successfully updated! Redirecting to Sign In...');
+        onNotify('success', 'Password reset successfully! You can now sign in.');
+        setTimeout(() => {
+          setActiveTab('signin');
+          setPassword('');
+          setConfirmPassword('');
+        }, 1500);
       } else {
-        setErrorMessage(res.error || 'Could not process password reset for this email.');
+        setErrorMessage(res.error || 'Could not update password for this account.');
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to request password reset.');
+      setErrorMessage(err.message || 'Failed to update password.');
     } finally {
       setIsLoading(false);
     }
@@ -456,11 +471,11 @@ export const PublicAuthPortal: React.FC<PublicAuthPortalProps> = ({
                 </form>
               )}
 
-              {/* Form 3: Forgot Password */}
+              {/* Form 3: Forgot Password / Direct Password Reset */}
               {activeTab === 'forgot' && (
                 <form onSubmit={handleForgotPassword} className="space-y-4">
                   <div className="text-xs text-slate-400 leading-relaxed">
-                    Enter the email associated with your account. We will dispatch instructions to securely reset your password.
+                    Enter your account email and choose a new password to update your login credentials immediately.
                   </div>
 
                   <div>
@@ -472,7 +487,35 @@ export const PublicAuthPortal: React.FC<PublicAuthPortalProps> = ({
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Enter your registered email"
+                      placeholder="Enter your registered email (e.g. atul.wendor@gmail.com)"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3.5 py-2.5 text-xs font-medium text-white placeholder-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                      New Password
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter new password (min. 6 characters)"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3.5 py-2.5 text-xs font-medium text-white placeholder-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                      Confirm New Password
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Re-enter your new password"
                       className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3.5 py-2.5 text-xs font-medium text-white placeholder-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all"
                     />
                   </div>
@@ -483,7 +526,7 @@ export const PublicAuthPortal: React.FC<PublicAuthPortalProps> = ({
                     className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-98 py-3 text-xs font-bold text-white shadow-sm shadow-blue-500/20 transition-all disabled:opacity-50"
                   >
                     <KeyRound className="h-4 w-4" />
-                    <span>{isLoading ? 'Sending Instructions...' : 'Send Password Reset'}</span>
+                    <span>{isLoading ? 'Updating Password...' : 'Reset & Update Password'}</span>
                   </button>
 
                   <div className="pt-2 text-center text-xs text-slate-400">
