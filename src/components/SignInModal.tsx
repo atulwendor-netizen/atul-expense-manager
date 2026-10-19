@@ -10,7 +10,7 @@ import {
 interface SignInModalProps {
   isOpen: boolean;
   onClose?: () => void;
-  onLoginWithCredentials: (email: string, password?: string) => { success: boolean; user?: UserProfile; error?: string };
+  onLoginWithCredentials: (email: string, password?: string) => Promise<{ success: boolean; user?: UserProfile; error?: string }> | { success: boolean; user?: UserProfile; error?: string };
   onNotify: (type: 'success' | 'warning' | 'info' | 'error', text: string) => void;
   isMandatory?: boolean;
 }
@@ -29,7 +29,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -41,7 +41,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      const res = onLoginWithCredentials(cleanEmail, passwordInput);
+      const res = await onLoginWithCredentials(cleanEmail, passwordInput);
       if (res.success && res.user) {
         onNotify(
           'success',

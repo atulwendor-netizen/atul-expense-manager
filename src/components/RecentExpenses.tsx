@@ -60,7 +60,12 @@ export const RecentExpenses: React.FC<RecentExpensesProps> = ({
       </div>
 
       <div className="divide-y divide-slate-100 dark:divide-slate-800">
-        {recentList.map((expense) => {
+        {recentList.length === 0 ? (
+          <div className="py-8 text-center text-xs text-slate-400 dark:text-slate-500">
+            No expenses recorded yet. Click "+ Log" to record your first transaction.
+          </div>
+        ) : (
+          recentList.map((expense) => {
           const isIncomplete = expense.status === 'incomplete' || expense.amount === null;
 
           return (
@@ -112,7 +117,7 @@ export const RecentExpenses: React.FC<RecentExpensesProps> = ({
               </div>
             </div>
           );
-        })}
+        }))}
       </div>
     </div>
   );

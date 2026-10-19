@@ -95,9 +95,14 @@ export const ExpenseTrendChart: React.FC<ExpenseTrendChartProps> = ({ expenses }
       </div>
 
       <div className="h-64 w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-            <defs>
+        {chartData.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-xs text-slate-400 dark:text-slate-500">
+            No spending trend data available yet.
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <defs>
               <linearGradient id="spendGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
                 <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.0} />
@@ -151,6 +156,7 @@ export const ExpenseTrendChart: React.FC<ExpenseTrendChartProps> = ({ expenses }
             />
           </AreaChart>
         </ResponsiveContainer>
+      )}
       </div>
     </div>
   );

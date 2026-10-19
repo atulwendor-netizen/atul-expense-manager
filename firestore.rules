@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default Deny: All access blocked unless explicitly matched below
+    match /{document=**} {
+      allow read, write: false;
+    }
+
+    // STRICT MULTI-USER PERSONAL ISOLATION:
+    // Every personal financial record is partitioned under /users/{userId}/...
+    // Access is allowed ONLY if the requesting user's Firebase Auth UID matches {userId}.
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // Personal user collections: expenses, trips, reimbursements, payment_proofs, audit_logs
+      match /{subcollection}/{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+  }
+}

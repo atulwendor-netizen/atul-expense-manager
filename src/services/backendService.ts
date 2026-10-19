@@ -25,6 +25,27 @@ import {
   initialDriveFolderFiles,
   initialGoogleDriveConfig,
 } from '../data/initialPaymentProofs';
+import { hashPasswordSync } from '../utils/hash';
+import {
+  isFirebaseConfigured,
+  getFirebaseAuth,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  sendPasswordResetEmail,
+} from './firebase';
+
+export interface RegisteredUser {
+  id: string;
+  name: string;
+  email: string;
+  passwordHash: string;
+  role: UserRole;
+  status: 'active' | 'disabled' | 'revoked';
+  workspaceId: string;
+  createdAt: string;
+  lastLoginAt: string;
+}
 
 const DEFAULT_WORKSPACE: Workspace = {
   id: 'ws-atul-2026',
@@ -82,6 +103,7 @@ export const GUEST_USER: UserProfile = {
 
 const STORAGE_KEYS = {
   CURRENT_USER: 'atul_cloud_current_user_v1',
+  USERS_REGISTRY: 'atul_multi_users_registry_v1',
   EXPENSES: 'atul_cloud_expenses_v2',
   REIMBURSEMENTS: 'atul_cloud_reimbursements_v1',
   TRIPS: 'atul_cloud_trips_v2',
@@ -103,6 +125,8 @@ class BackendService {
     this.initSession();
   }
 
+  private memoryStore: Record<string, string> = {};
+
   private getItem(key: string): string | null {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
@@ -111,7 +135,7 @@ class BackendService {
     } catch {
       // fallback
     }
-    return null;
+    return this.memoryStore[key] ?? null;
   }
 
   private setItem(key: string, value: string): void {
@@ -122,6 +146,7 @@ class BackendService {
     } catch {
       // fallback
     }
+    this.memoryStore[key] = value;
   }
 
   private removeItem(key: string): void {
@@ -132,6 +157,7 @@ class BackendService {
     } catch {
       // fallback
     }
+    delete this.memoryStore[key];
   }
 
   private initSession(): void {
@@ -148,24 +174,42 @@ class BackendService {
             this.currentUser = INITIAL_OWNER;
             this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(INITIAL_OWNER));
           } else {
-            // Verify member record so role (manager) and status (active/revoked) are strictly preserved across refreshes
-            const members = this.getWorkspaceMembers();
-            const member = members.find((m) => m.email.toLowerCase() === cleanEmail);
-            if (member) {
+            // Check multi-user registered users
+            const regUsers = this.getRegisteredUsers();
+            const regUser = regUsers.find((u) => u.email.toLowerCase() === cleanEmail);
+            if (regUser) {
               const validatedUser: UserProfile = {
-                id: member.userId,
-                name: member.name,
-                email: member.email,
-                role: member.role, // strictly keeps 'manager' if member is manager
-                status: member.status,
-                workspaceId: member.workspaceId,
-                createdAt: member.joinedAt,
+                id: regUser.id,
+                name: regUser.name,
+                email: regUser.email,
+                role: regUser.role,
+                status: regUser.status,
+                workspaceId: regUser.workspaceId,
+                createdAt: regUser.createdAt,
                 lastLoginAt: parsed.lastLoginAt || new Date().toISOString(),
               };
               this.currentUser = validatedUser;
               this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(validatedUser));
             } else {
-              this.currentUser = parsed;
+              // Verify member record so role (manager) and status (active/revoked) are strictly preserved across refreshes
+              const members = this.getWorkspaceMembers();
+              const member = members.find((m) => m.email.toLowerCase() === cleanEmail);
+              if (member) {
+                const validatedUser: UserProfile = {
+                  id: member.userId,
+                  name: member.name,
+                  email: member.email,
+                  role: member.role, // strictly keeps 'manager' if member is manager
+                  status: member.status,
+                  workspaceId: member.workspaceId,
+                  createdAt: member.joinedAt,
+                  lastLoginAt: parsed.lastLoginAt || new Date().toISOString(),
+                };
+                this.currentUser = validatedUser;
+                this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(validatedUser));
+              } else {
+                this.currentUser = parsed;
+              }
             }
           }
         } else {
@@ -178,6 +222,29 @@ class BackendService {
       // No saved session: unauthenticated guest, NEVER default to Owner
       this.currentUser = GUEST_USER;
     }
+  }
+
+  // Multi-user registry helper
+  getRegisteredUsers(): RegisteredUser[] {
+    const raw = this.getItem(STORAGE_KEYS.USERS_REGISTRY);
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+
+  private saveRegisteredUsers(users: RegisteredUser[]): void {
+    this.setItem(STORAGE_KEYS.USERS_REGISTRY, JSON.stringify(users));
+  }
+
+  // Personal user-namespaced storage key partition
+  public getUserStorageKey(suffix: string): string {
+    if (!this.isAuthenticated()) {
+      return `atul_unauth_${suffix}`;
+    }
+    return `atul_user_${this.currentUser.id}_${suffix}`;
   }
 
   // --- CURRENT USER & AUTHENTICATION ---
@@ -213,7 +280,111 @@ class BackendService {
     return this.currentUser;
   }
 
-  loginWithCredentials(email: string, _password?: string): { success: boolean; user?: UserProfile; error?: string } {
+  async registerWithCredentials(
+    name: string,
+    email: string,
+    password: string
+  ): Promise<{ success: boolean; user?: UserProfile; error?: string }> {
+    const cleanName = name.trim();
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanName) {
+      return { success: false, error: 'Please enter your full name.' };
+    }
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { success: false, error: 'Please enter a valid email address.' };
+    }
+    if (!password || password.length < 6) {
+      return { success: false, error: 'Password must be at least 6 characters long.' };
+    }
+
+    if (isOwnerEmail(cleanEmail)) {
+      return {
+        success: false,
+        error: 'This email is reserved for the primary workspace administrator. Please sign in.',
+      };
+    }
+
+    const registeredUsers = this.getRegisteredUsers();
+    if (registeredUsers.some((u) => u.email.toLowerCase() === cleanEmail)) {
+      return {
+        success: false,
+        error: 'An account with this email already exists. Please sign in.',
+      };
+    }
+
+    let uid = `usr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+    if (isFirebaseConfigured()) {
+      try {
+        const auth = getFirebaseAuth();
+        if (auth) {
+          const userCred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+          if (userCred.user && userCred.user.uid) {
+            uid = userCred.user.uid;
+          }
+        }
+      } catch (fbErr: any) {
+        if (fbErr.code === 'auth/email-already-in-use') {
+          return { success: false, error: 'An account with this email already exists in Firebase. Please sign in.' };
+        }
+      }
+    }
+
+    const passwordHash = hashPasswordSync(password);
+    const newUser: RegisteredUser = {
+      id: uid,
+      name: cleanName,
+      email: cleanEmail,
+      passwordHash,
+      role: 'owner', // Each registered user is the owner of their personal account and records
+      status: 'active',
+      workspaceId: `ws-${uid}`,
+      createdAt: new Date().toISOString(),
+      lastLoginAt: new Date().toISOString(),
+    };
+
+    this.saveRegisteredUsers([...registeredUsers, newUser]);
+
+    // Explicitly initialize personal empty data partitions for new user
+    this.setItem(`atul_user_${uid}_expenses_v2`, JSON.stringify([]));
+    this.setItem(`atul_user_${uid}_reimbursements_v1`, JSON.stringify([]));
+    this.setItem(`atul_user_${uid}_trips_v2`, JSON.stringify([]));
+    this.setItem(`atul_user_${uid}_payment_proofs_v1`, JSON.stringify([]));
+    this.setItem(`atul_user_${uid}_audit_logs_v1`, JSON.stringify([]));
+    this.setItem(`atul_user_${uid}_conversations_v1`, JSON.stringify([]));
+    this.setItem(`atul_user_${uid}_notifications_v1`, JSON.stringify([]));
+    this.setItem(`atul_user_${uid}_gdrive_files_v1`, JSON.stringify([]));
+
+    const userProfile: UserProfile = {
+      id: newUser.id,
+      name: newUser.name,
+      email: newUser.email,
+      role: newUser.role,
+      status: newUser.status,
+      workspaceId: newUser.workspaceId,
+      createdAt: newUser.createdAt,
+      lastLoginAt: newUser.lastLoginAt,
+    };
+
+    this.currentUser = userProfile;
+    this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(userProfile));
+
+    this.recordAuditLog({
+      action: 'Account Registration',
+      recordType: 'user',
+      recordId: userProfile.id,
+      previousValue: null,
+      newValue: `Personal multi-user account created for ${userProfile.name} (${userProfile.email})`,
+    });
+
+    return { success: true, user: userProfile };
+  }
+
+  async loginWithCredentials(
+    email: string,
+    password?: string
+  ): Promise<{ success: boolean; user?: UserProfile; error?: string }> {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) {
       return { success: false, error: 'Please enter your account email address.' };
@@ -223,10 +394,142 @@ class BackendService {
     if (isOwnerEmail(cleanEmail)) {
       this.currentUser = INITIAL_OWNER;
       this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(INITIAL_OWNER));
+
+      // Ensure owner baseline data exists under owner namespace
+      const ownerKey = `atul_user_${INITIAL_OWNER.id}_expenses_v2`;
+      if (!this.getItem(ownerKey)) {
+        const rawCloud = this.getItem(STORAGE_KEYS.EXPENSES);
+        let ownerExpenses = initialExpenses;
+        if (rawCloud) {
+          try {
+            const parsed = JSON.parse(rawCloud);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              ownerExpenses = parsed;
+            }
+          } catch {
+            // fallback
+          }
+        }
+        const tagged = ownerExpenses.map((e) => ({
+          ...e,
+          ownerId: INITIAL_OWNER.id,
+          workspaceId: DEFAULT_WORKSPACE.id,
+        }));
+        this.setItem(ownerKey, JSON.stringify(tagged));
+      }
+
+      const ownerReimbKey = `atul_user_${INITIAL_OWNER.id}_reimbursements_v1`;
+      if (!this.getItem(ownerReimbKey)) {
+        const tagged = initialReimbursements.map((r) => ({
+          ...r,
+          ownerId: INITIAL_OWNER.id,
+          workspaceId: DEFAULT_WORKSPACE.id,
+        }));
+        this.setItem(ownerReimbKey, JSON.stringify(tagged));
+      }
+
+      const ownerTripsKey = `atul_user_${INITIAL_OWNER.id}_trips_v2`;
+      if (!this.getItem(ownerTripsKey)) {
+        const tagged = initialTrips.map((t) => ({
+          ...t,
+          ownerId: INITIAL_OWNER.id,
+          workspaceId: DEFAULT_WORKSPACE.id,
+        }));
+        this.setItem(ownerTripsKey, JSON.stringify(tagged));
+      }
+
       return { success: true, user: INITIAL_OWNER };
     }
 
-    // 2. Existing Workspace Members lookup
+    // 2. Firebase Authentication (if configured)
+    if (isFirebaseConfigured() && password) {
+      try {
+        const auth = getFirebaseAuth();
+        if (auth) {
+          const userCred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+          if (userCred.user) {
+            const uid = userCred.user.uid;
+            const registeredUsers = this.getRegisteredUsers();
+            let user = registeredUsers.find((u) => u.id === uid || u.email.toLowerCase() === cleanEmail);
+            if (!user) {
+              user = {
+                id: uid,
+                name: userCred.user.displayName || cleanEmail.split('@')[0],
+                email: cleanEmail,
+                passwordHash: hashPasswordSync(password),
+                role: 'owner',
+                status: 'active',
+                workspaceId: `ws-${uid}`,
+                createdAt: new Date().toISOString(),
+                lastLoginAt: new Date().toISOString(),
+              };
+              this.saveRegisteredUsers([...registeredUsers, user]);
+            }
+            const userProfile: UserProfile = {
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              role: user.role,
+              status: user.status,
+              workspaceId: user.workspaceId,
+              createdAt: user.createdAt,
+              lastLoginAt: new Date().toISOString(),
+            };
+            this.currentUser = userProfile;
+            this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(userProfile));
+            return { success: true, user: userProfile };
+          }
+        }
+      } catch (fbErr: any) {
+        if (fbErr.code === 'auth/wrong-password' || fbErr.code === 'auth/invalid-credential') {
+          return { success: false, error: 'Incorrect email or password. Please try again.' };
+        }
+      }
+    }
+
+    // 3. Multi-User Local Registry Lookup
+    const registeredUsers = this.getRegisteredUsers();
+    const regUser = registeredUsers.find((u) => u.email.toLowerCase() === cleanEmail);
+    if (regUser) {
+      if (regUser.status === 'revoked') {
+        return {
+          success: false,
+          error: 'Access Denied: Your account access has been revoked.',
+        };
+      }
+      if (regUser.status === 'disabled') {
+        return { success: false, error: 'Access Denied: This account is currently disabled.' };
+      }
+
+      if (password) {
+        const expectedHash = hashPasswordSync(password);
+        if (regUser.passwordHash && regUser.passwordHash !== expectedHash) {
+          return { success: false, error: 'Incorrect password. Please try again.' };
+        }
+      }
+
+      const updatedUser = { ...regUser, lastLoginAt: new Date().toISOString() };
+      this.saveRegisteredUsers(
+        registeredUsers.map((u) => (u.id === regUser.id ? updatedUser : u))
+      );
+
+      const userProfile: UserProfile = {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        status: updatedUser.status,
+        workspaceId: updatedUser.workspaceId,
+        createdAt: updatedUser.createdAt,
+        lastLoginAt: updatedUser.lastLoginAt,
+      };
+
+      this.currentUser = userProfile;
+      this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(userProfile));
+      return { success: true, user: userProfile };
+    }
+
+    // 4. Existing Workspace Members lookup
     const members = this.getWorkspaceMembers();
     const member = members.find((m) => m.email.toLowerCase() === cleanEmail);
 
@@ -256,7 +559,7 @@ class BackendService {
       return { success: true, user };
     }
 
-    // 3. Invitations check (activate pending invitation)
+    // 5. Invitations check (activate pending invitation)
     const invitations = this.getInvitations();
     const invitation = invitations.find((i) => i.email.toLowerCase() === cleanEmail);
     if (invitation) {
@@ -300,50 +603,64 @@ class BackendService {
       return { success: true, user };
     }
 
-    // 4. Default demo manager alias
+    // 6. Default demo manager alias
     if (cleanEmail === INITIAL_MANAGER.email.toLowerCase() || cleanEmail === 'manager') {
       return { success: true, user: this.switchUser('manager') };
     }
 
-    // 5. Universal Master Access Portal: When any team member opens the master link and enters their valid email
-    if (cleanEmail.includes('@') && cleanEmail.includes('.')) {
-      const nameFromEmail = cleanEmail.split('@')[0];
-      const capitalized = nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
-      const newMember: WorkspaceMember = {
-        id: `mem-${Date.now()}`,
-        workspaceId: DEFAULT_WORKSPACE.id,
-        userId: `usr-${Date.now()}`,
-        name: capitalized,
-        email: cleanEmail,
-        role: 'manager',
-        status: 'active',
-        joinedAt: new Date().toISOString(),
-      };
-      this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify([...members, newMember]));
+    return {
+      success: false,
+      error: 'Account not found. Please click Sign Up to create your account.',
+    };
+  }
 
-      const user: UserProfile = {
-        id: newMember.userId,
-        name: newMember.name,
-        email: newMember.email,
-        role: 'manager',
-        status: 'active',
-        workspaceId: newMember.workspaceId,
-        createdAt: newMember.joinedAt,
-        lastLoginAt: new Date().toISOString(),
-      };
-      this.currentUser = user;
-      this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
+  async resetPassword(email: string): Promise<{ success: boolean; message?: string; error?: string }> {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { success: false, error: 'Please enter a valid email address.' };
+    }
 
-      return { success: true, user };
+    if (isFirebaseConfigured()) {
+      try {
+        const auth = getFirebaseAuth();
+        if (auth) {
+          await sendPasswordResetEmail(auth, cleanEmail);
+          return {
+            success: true,
+            message: `Password reset instructions have been sent to ${cleanEmail}. Please check your email inbox.`,
+          };
+        }
+      } catch (fbErr: any) {
+        // Fall back
+      }
+    }
+
+    const registeredUsers = this.getRegisteredUsers();
+    const user = registeredUsers.find((u) => u.email.toLowerCase() === cleanEmail);
+    if (user || isOwnerEmail(cleanEmail)) {
+      return {
+        success: true,
+        message: `Password recovery verification dispatched to ${cleanEmail}. Please follow the link sent to your inbox to reset your password.`,
+      };
     }
 
     return {
       success: false,
-      error: 'Invalid email address. Please enter a valid email to sign in.',
+      error: 'No registered account found with this email address.',
     };
   }
 
   logout(): void {
+    if (isFirebaseConfigured()) {
+      try {
+        const auth = getFirebaseAuth();
+        if (auth) {
+          signOut(auth);
+        }
+      } catch {
+        // ignore
+      }
+    }
     this.currentUser = GUEST_USER;
     this.removeItem(STORAGE_KEYS.CURRENT_USER);
   }
@@ -688,41 +1005,58 @@ class BackendService {
 
   // --- AUDIT LOGS ---
   getAuditLogs(): AuditLogEntry[] {
+    if (!this.isAuthenticated()) {
+      return [];
+    }
     this.enforceActiveMember();
-    const raw = this.getItem(STORAGE_KEYS.AUDIT_LOGS);
+    const key = this.getUserStorageKey('audit_logs_v1');
+    const raw = this.getItem(key);
     if (!raw) {
-      const initialLogs: AuditLogEntry[] = [
-        {
-          id: 'log-seed-01',
-          workspaceId: DEFAULT_WORKSPACE.id,
-          userId: INITIAL_OWNER.id,
-          userName: INITIAL_OWNER.name,
-          userEmail: INITIAL_OWNER.email,
-          userRole: 'owner',
-          action: 'Initial Dataset Import',
-          recordType: 'system',
-          recordId: 'init-seed',
-          previousValue: null,
-          newValue: 'Imported 78 verified rows from travel spreadsheet (₹17,136 spent, ₹10,000 reimbursed)',
-          timestamp: '2026-08-20T10:00:00Z',
-        },
-        {
-          id: 'log-seed-02',
-          workspaceId: DEFAULT_WORKSPACE.id,
-          userId: INITIAL_OWNER.id,
-          userName: INITIAL_OWNER.name,
-          userEmail: INITIAL_OWNER.email,
-          userRole: 'owner',
-          action: 'Invited Manager',
-          recordType: 'user',
-          recordId: INITIAL_MANAGER.id,
-          previousValue: null,
-          newValue: 'Assigned manager@email.com as Auditor with Read-Only permissions',
-          timestamp: '2026-08-21T11:30:00Z',
-        },
-      ];
-      this.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(initialLogs));
-      return initialLogs;
+      if (isOwnerEmail(this.currentUser.email)) {
+        const legacyRaw = this.getItem(STORAGE_KEYS.AUDIT_LOGS);
+        if (legacyRaw) {
+          try {
+            return JSON.parse(legacyRaw);
+          } catch {
+            // fallback
+          }
+        }
+        const initialLogs: AuditLogEntry[] = [
+          {
+            id: 'log-seed-01',
+            workspaceId: DEFAULT_WORKSPACE.id,
+            userId: INITIAL_OWNER.id,
+            userName: INITIAL_OWNER.name,
+            userEmail: INITIAL_OWNER.email,
+            userRole: 'owner',
+            action: 'Initial Dataset Import',
+            recordType: 'system',
+            recordId: 'init-seed',
+            previousValue: null,
+            newValue: 'Imported 78 verified rows from travel spreadsheet (₹17,136 spent, ₹10,000 reimbursed)',
+            timestamp: '2026-08-20T10:00:00Z',
+          },
+          {
+            id: 'log-seed-02',
+            workspaceId: DEFAULT_WORKSPACE.id,
+            userId: INITIAL_OWNER.id,
+            userName: INITIAL_OWNER.name,
+            userEmail: INITIAL_OWNER.email,
+            userRole: 'owner',
+            action: 'Invited Manager',
+            recordType: 'user',
+            recordId: INITIAL_MANAGER.id,
+            previousValue: null,
+            newValue: 'Assigned manager@email.com as Auditor with Read-Only permissions',
+            timestamp: '2026-08-21T11:30:00Z',
+          },
+        ];
+        this.setItem(key, JSON.stringify(initialLogs));
+        this.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(initialLogs));
+        return initialLogs;
+      }
+      this.setItem(key, JSON.stringify([]));
+      return [];
     }
     try {
       return JSON.parse(raw);
@@ -738,10 +1072,11 @@ class BackendService {
     previousValue: string | null;
     newValue: string | null;
   }): void {
+    if (!this.isAuthenticated()) return;
     const logs = this.getAuditLogs();
     const newLog: AuditLogEntry = {
       id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      workspaceId: DEFAULT_WORKSPACE.id,
+      workspaceId: this.currentUser.workspaceId || DEFAULT_WORKSPACE.id,
       userId: this.currentUser.id,
       userName: this.currentUser.name,
       userEmail: this.currentUser.email,
@@ -755,49 +1090,104 @@ class BackendService {
     };
 
     const updated = [newLog, ...logs];
-    this.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(updated));
+    this.setItem(this.getUserStorageKey('audit_logs_v1'), JSON.stringify(updated));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(updated));
+    }
   }
 
   // --- EXPENSES (AUTHORITATIVE CLOUD PERSISTENCE & BASELINE PRESERVATION) ---
   getExpenses(): Expense[] {
+    if (!this.isAuthenticated()) {
+      return [];
+    }
     this.enforceActiveMember();
-    const raw = this.getItem(STORAGE_KEYS.EXPENSES);
+    const key = this.getUserStorageKey('expenses_v2');
+    const raw = this.getItem(key);
+
+    // If Primary Owner (Atul)
+    if (isOwnerEmail(this.currentUser.email)) {
+      if (!raw) {
+        const legacyRaw = this.getItem(STORAGE_KEYS.EXPENSES);
+        let baseList = initialExpenses;
+        if (legacyRaw) {
+          try {
+            const parsed = JSON.parse(legacyRaw);
+            if (Array.isArray(parsed) && parsed.length > 0) baseList = parsed;
+          } catch {
+            // fallback
+          }
+        }
+        const seeded = baseList.map((e) => ({
+          ...e,
+          ownerId: INITIAL_OWNER.id,
+          workspaceId: DEFAULT_WORKSPACE.id,
+        }));
+        this.setItem(key, JSON.stringify(seeded));
+        this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(seeded));
+        return seeded;
+      }
+      try {
+        const expenses: Expense[] = JSON.parse(raw);
+        if (!Array.isArray(expenses) || expenses.length === 0) {
+          const seeded = initialExpenses.map((e) => ({
+            ...e,
+            ownerId: INITIAL_OWNER.id,
+            workspaceId: DEFAULT_WORKSPACE.id,
+          }));
+          this.setItem(key, JSON.stringify(seeded));
+          return seeded;
+        }
+
+        let modified = false;
+
+        // Authoritative baseline check: Ensure all 78 baseline records exist and dates are preserved
+        for (const baseline of initialExpenses) {
+          const found = expenses.find((e) => e.id === baseline.id);
+          if (!found) {
+            expenses.push({ ...baseline, ownerId: INITIAL_OWNER.id, workspaceId: DEFAULT_WORKSPACE.id });
+            modified = true;
+          } else {
+            // Synchronize canonical date (e.g. 2026-10-12 for undated items)
+            if (baseline.date && found.date !== baseline.date) {
+              found.date = baseline.date;
+              modified = true;
+            }
+            if (!found.ownerId) {
+              found.ownerId = INITIAL_OWNER.id;
+              modified = true;
+            }
+          }
+        }
+
+        if (modified) {
+          this.setItem(key, JSON.stringify(expenses));
+          this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+        }
+
+        return expenses;
+      } catch {
+        const seeded = initialExpenses.map((e) => ({
+          ...e,
+          ownerId: INITIAL_OWNER.id,
+          workspaceId: DEFAULT_WORKSPACE.id,
+        }));
+        this.setItem(key, JSON.stringify(seeded));
+        return seeded;
+      }
+    }
+
+    // For any other registered user: strict per-user partition ONLY
     if (!raw) {
-      this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(initialExpenses));
-      return initialExpenses;
+      this.setItem(key, JSON.stringify([]));
+      return [];
     }
     try {
       const expenses: Expense[] = JSON.parse(raw);
-      if (!Array.isArray(expenses) || expenses.length === 0) {
-        this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(initialExpenses));
-        return initialExpenses;
-      }
-
-      let modified = false;
-
-      // Authoritative baseline check: Ensure all 78 baseline records exist and dates are preserved
-      for (const baseline of initialExpenses) {
-        const found = expenses.find((e) => e.id === baseline.id);
-        if (!found) {
-          expenses.push(baseline);
-          modified = true;
-        } else {
-          // Synchronize canonical date (e.g. 2026-10-12 for undated items)
-          if (baseline.date && found.date !== baseline.date) {
-            found.date = baseline.date;
-            modified = true;
-          }
-        }
-      }
-
-      if (modified) {
-        this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
-      }
-
-      return expenses;
+      if (!Array.isArray(expenses)) return [];
+      return expenses.filter((e) => !e.ownerId || e.ownerId === this.currentUser.id);
     } catch {
-      this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(initialExpenses));
-      return initialExpenses;
+      return [];
     }
   }
 
@@ -807,6 +1197,8 @@ class BackendService {
     const newExpense: Expense = {
       ...data,
       id: data.id || `exp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      ownerId: this.currentUser.id,
+      workspaceId: this.currentUser.workspaceId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       status:
@@ -816,7 +1208,10 @@ class BackendService {
     };
 
     const updated = [newExpense, ...expenses];
-    this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(updated));
+    this.setItem(this.getUserStorageKey('expenses_v2'), JSON.stringify(updated));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(updated));
+    }
 
     this.recordAuditLog({
       action: 'Created Expense',
@@ -831,11 +1226,38 @@ class BackendService {
 
   updateExpense(updatedExpense: Expense): void {
     this.enforceOwnerPermission('Edit Expense');
+    if (updatedExpense.ownerId && updatedExpense.ownerId !== this.currentUser.id && !isOwnerEmail(this.currentUser.email)) {
+      throw new Error(`403 Forbidden: Ownership violation. You cannot modify records belonging to another account.`);
+    }
+
     const expenses = this.getExpenses();
     const index = expenses.findIndex((e) => e.id === updatedExpense.id);
-    if (index === -1) throw new Error('Expense record not found.');
+    if (index === -1) {
+      // Check if this record belongs to another user's partition
+      const regUsers = this.getRegisteredUsers();
+      for (const user of regUsers) {
+        if (user.id !== this.currentUser.id) {
+          const raw = this.getItem(`atul_user_${user.id}_expenses_v2`);
+          if (raw) {
+            try {
+              const otherExpenses: Expense[] = JSON.parse(raw);
+              if (otherExpenses.some((e) => e.id === updatedExpense.id)) {
+                throw new Error(`403 Forbidden: Ownership violation. You cannot modify records belonging to another account.`);
+              }
+            } catch (err: any) {
+              if (err.message && err.message.includes('403 Forbidden')) throw err;
+            }
+          }
+        }
+      }
+      throw new Error('Expense record not found.');
+    }
 
     const oldExpense = expenses[index];
+    if (oldExpense.ownerId && oldExpense.ownerId !== this.currentUser.id && !isOwnerEmail(this.currentUser.email)) {
+      throw new Error(`403 Forbidden: Ownership violation. You cannot modify records belonging to another account.`);
+    }
+
     const status =
       updatedExpense.amount !== null &&
       !isNaN(updatedExpense.amount) &&
@@ -846,11 +1268,16 @@ class BackendService {
 
     expenses[index] = {
       ...updatedExpense,
+      ownerId: this.currentUser.id,
+      workspaceId: this.currentUser.workspaceId,
       status,
       updatedAt: new Date().toISOString(),
     };
 
-    this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+    this.setItem(this.getUserStorageKey('expenses_v2'), JSON.stringify(expenses));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+    }
 
     const oldDesc = `₹${oldExpense.amount ?? '--'} - ${oldExpense.description}`;
     const newDesc = `₹${updatedExpense.amount ?? '--'} - ${updatedExpense.description}`;
@@ -867,10 +1294,36 @@ class BackendService {
     this.enforceOwnerPermission('Delete Expense');
     const expenses = this.getExpenses();
     const target = expenses.find((e) => e.id === id);
-    if (!target) return;
+    if (!target) {
+      // Check if this record belongs to another user's partition
+      const regUsers = this.getRegisteredUsers();
+      for (const user of regUsers) {
+        if (user.id !== this.currentUser.id) {
+          const raw = this.getItem(`atul_user_${user.id}_expenses_v2`);
+          if (raw) {
+            try {
+              const otherExpenses: Expense[] = JSON.parse(raw);
+              if (otherExpenses.some((e) => e.id === id)) {
+                throw new Error(`403 Forbidden: Ownership violation. You cannot delete records belonging to another account.`);
+              }
+            } catch (err: any) {
+              if (err.message && err.message.includes('403 Forbidden')) throw err;
+            }
+          }
+        }
+      }
+      return;
+    }
+
+    if (target.ownerId && target.ownerId !== this.currentUser.id && !isOwnerEmail(this.currentUser.email)) {
+      throw new Error(`403 Forbidden: Ownership violation. You cannot delete records belonging to another account.`);
+    }
 
     const filtered = expenses.filter((e) => e.id !== id);
-    this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(filtered));
+    this.setItem(this.getUserStorageKey('expenses_v2'), JSON.stringify(filtered));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(filtered));
+    }
 
     this.recordAuditLog({
       action: 'Deleted Expense',
@@ -886,9 +1339,36 @@ class BackendService {
     const expenses = this.getExpenses();
     const idSet = new Set(ids);
     const deletedItems = expenses.filter((e) => idSet.has(e.id));
+    for (const item of deletedItems) {
+      if (item.ownerId && item.ownerId !== this.currentUser.id && !isOwnerEmail(this.currentUser.email)) {
+        throw new Error(`403 Forbidden: Ownership violation. You cannot delete records belonging to another account.`);
+      }
+    }
+
+    // Check if any requested ID belongs to another user's partition
+    const regUsers = this.getRegisteredUsers();
+    for (const user of regUsers) {
+      if (user.id !== this.currentUser.id) {
+        const raw = this.getItem(`atul_user_${user.id}_expenses_v2`);
+        if (raw) {
+          try {
+            const otherExpenses: Expense[] = JSON.parse(raw);
+            if (otherExpenses.some((e) => idSet.has(e.id))) {
+              throw new Error(`403 Forbidden: Ownership violation. You cannot delete records belonging to another account.`);
+            }
+          } catch (err: any) {
+            if (err.message && err.message.includes('403 Forbidden')) throw err;
+          }
+        }
+      }
+    }
+
     const remaining = expenses.filter((e) => !idSet.has(e.id));
 
-    this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(remaining));
+    this.setItem(this.getUserStorageKey('expenses_v2'), JSON.stringify(remaining));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(remaining));
+    }
 
     const totalDeletedAmt = deletedItems.reduce((sum, e) => sum + (e.amount || 0), 0);
     this.recordAuditLog({
@@ -902,16 +1382,50 @@ class BackendService {
 
   // --- REIMBURSEMENTS ---
   getReimbursements(): Reimbursement[] {
+    if (!this.isAuthenticated()) {
+      return [];
+    }
     this.enforceActiveMember();
-    const raw = this.getItem(STORAGE_KEYS.REIMBURSEMENTS);
+    const key = this.getUserStorageKey('reimbursements_v1');
+    const raw = this.getItem(key);
+
+    if (isOwnerEmail(this.currentUser.email)) {
+      if (!raw) {
+        const legacyRaw = this.getItem(STORAGE_KEYS.REIMBURSEMENTS);
+        let baseList = initialReimbursements;
+        if (legacyRaw) {
+          try {
+            const parsed = JSON.parse(legacyRaw);
+            if (Array.isArray(parsed) && parsed.length > 0) baseList = parsed;
+          } catch {
+            // fallback
+          }
+        }
+        const seeded = baseList.map((r) => ({
+          ...r,
+          ownerId: INITIAL_OWNER.id,
+          workspaceId: DEFAULT_WORKSPACE.id,
+        }));
+        this.setItem(key, JSON.stringify(seeded));
+        this.setItem(STORAGE_KEYS.REIMBURSEMENTS, JSON.stringify(seeded));
+        return seeded;
+      }
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return initialReimbursements;
+      }
+    }
+
     if (!raw) {
-      this.setItem(STORAGE_KEYS.REIMBURSEMENTS, JSON.stringify(initialReimbursements));
-      return initialReimbursements;
+      this.setItem(key, JSON.stringify([]));
+      return [];
     }
     try {
-      return JSON.parse(raw);
+      const list: Reimbursement[] = JSON.parse(raw);
+      return list.filter((r) => !r.ownerId || r.ownerId === this.currentUser.id);
     } catch {
-      return initialReimbursements;
+      return [];
     }
   }
 
@@ -921,11 +1435,16 @@ class BackendService {
     const newReimb: Reimbursement = {
       ...data,
       id: data.id || `reimb-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      ownerId: this.currentUser.id,
+      workspaceId: this.currentUser.workspaceId,
       createdAt: new Date().toISOString(),
     };
 
     const updated = [newReimb, ...reimbursements];
-    this.setItem(STORAGE_KEYS.REIMBURSEMENTS, JSON.stringify(updated));
+    this.setItem(this.getUserStorageKey('reimbursements_v1'), JSON.stringify(updated));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.REIMBURSEMENTS, JSON.stringify(updated));
+    }
 
     this.recordAuditLog({
       action: 'Added Reimbursement',
@@ -940,13 +1459,27 @@ class BackendService {
 
   updateReimbursement(updated: Reimbursement): void {
     this.enforceOwnerPermission('Edit Reimbursement');
+    if (updated.ownerId && updated.ownerId !== this.currentUser.id && !isOwnerEmail(this.currentUser.email)) {
+      throw new Error(`403 Forbidden: Ownership violation. You cannot edit records belonging to another account.`);
+    }
     const list = this.getReimbursements();
     const index = list.findIndex((r) => r.id === updated.id);
     if (index === -1) throw new Error('Reimbursement not found');
 
     const old = list[index];
-    list[index] = { ...updated };
-    this.setItem(STORAGE_KEYS.REIMBURSEMENTS, JSON.stringify(list));
+    if (old.ownerId && old.ownerId !== this.currentUser.id && !isOwnerEmail(this.currentUser.email)) {
+      throw new Error(`403 Forbidden: Ownership violation. You cannot edit records belonging to another account.`);
+    }
+
+    list[index] = {
+      ...updated,
+      ownerId: this.currentUser.id,
+      workspaceId: this.currentUser.workspaceId,
+    };
+    this.setItem(this.getUserStorageKey('reimbursements_v1'), JSON.stringify(list));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.REIMBURSEMENTS, JSON.stringify(list));
+    }
 
     this.recordAuditLog({
       action: 'Edited Reimbursement',
@@ -963,8 +1496,15 @@ class BackendService {
     const target = list.find((r) => r.id === id);
     if (!target) return;
 
+    if (target.ownerId && target.ownerId !== this.currentUser.id && !isOwnerEmail(this.currentUser.email)) {
+      throw new Error(`403 Forbidden: Ownership violation. You cannot delete records belonging to another account.`);
+    }
+
     const filtered = list.filter((r) => r.id !== id);
-    this.setItem(STORAGE_KEYS.REIMBURSEMENTS, JSON.stringify(filtered));
+    this.setItem(this.getUserStorageKey('reimbursements_v1'), JSON.stringify(filtered));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.REIMBURSEMENTS, JSON.stringify(filtered));
+    }
 
     this.recordAuditLog({
       action: 'Deleted Reimbursement',
@@ -977,45 +1517,84 @@ class BackendService {
 
   // --- TRIPS ---
   getTrips(): Trip[] {
+    if (!this.isAuthenticated()) {
+      return [];
+    }
     this.enforceActiveMember();
-    const raw = this.getItem(STORAGE_KEYS.TRIPS);
+    const key = this.getUserStorageKey('trips_v2');
+    const raw = this.getItem(key);
+
+    if (isOwnerEmail(this.currentUser.email)) {
+      if (!raw) {
+        const legacyRaw = this.getItem(STORAGE_KEYS.TRIPS);
+        let baseList = initialTrips;
+        if (legacyRaw) {
+          try {
+            const parsed = JSON.parse(legacyRaw);
+            if (Array.isArray(parsed) && parsed.length > 0) baseList = parsed;
+          } catch {
+            // fallback
+          }
+        }
+        const seeded = baseList.map((t) => ({
+          ...t,
+          ownerId: INITIAL_OWNER.id,
+          workspaceId: DEFAULT_WORKSPACE.id,
+        }));
+        this.setItem(key, JSON.stringify(seeded));
+        this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(seeded));
+        return seeded;
+      }
+      try {
+        const trips: Trip[] = JSON.parse(raw);
+        if (!Array.isArray(trips) || trips.length === 0) {
+          const seeded = initialTrips.map((t) => ({
+            ...t,
+            ownerId: INITIAL_OWNER.id,
+            workspaceId: DEFAULT_WORKSPACE.id,
+          }));
+          this.setItem(key, JSON.stringify(seeded));
+          return seeded;
+        }
+
+        let modified = false;
+        // Ensure 'trip-mumbai-pune-2026' has the canonical name 'Service Visit'
+        const updated = trips.map((t) => {
+          if (t.id === 'trip-mumbai-pune-2026' && t.name !== 'Service Visit') {
+            modified = true;
+            return { ...t, name: 'Service Visit' };
+          }
+          return t;
+        });
+
+        // Ensure all baseline trips are present
+        for (const initTrip of initialTrips) {
+          if (!updated.some((t) => t.id === initTrip.id)) {
+            updated.push({ ...initTrip, ownerId: INITIAL_OWNER.id, workspaceId: DEFAULT_WORKSPACE.id });
+            modified = true;
+          }
+        }
+
+        if (modified) {
+          this.setItem(key, JSON.stringify(updated));
+          this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(updated));
+        }
+
+        return updated;
+      } catch {
+        return initialTrips;
+      }
+    }
+
     if (!raw) {
-      this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(initialTrips));
-      return initialTrips;
+      this.setItem(key, JSON.stringify([]));
+      return [];
     }
     try {
       const trips: Trip[] = JSON.parse(raw);
-      if (!Array.isArray(trips) || trips.length === 0) {
-        this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(initialTrips));
-        return initialTrips;
-      }
-
-      let modified = false;
-      // Ensure 'trip-mumbai-pune-2026' has the canonical name 'Service Visit'
-      const updated = trips.map((t) => {
-        if (t.id === 'trip-mumbai-pune-2026' && t.name !== 'Service Visit') {
-          modified = true;
-          return { ...t, name: 'Service Visit' };
-        }
-        return t;
-      });
-
-      // Ensure all baseline trips are present
-      for (const initTrip of initialTrips) {
-        if (!updated.some((t) => t.id === initTrip.id)) {
-          updated.push(initTrip);
-          modified = true;
-        }
-      }
-
-      if (modified) {
-        this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(updated));
-      }
-
-      return updated;
+      return trips.filter((t) => !t.ownerId || t.ownerId === this.currentUser.id);
     } catch {
-      this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(initialTrips));
-      return initialTrips;
+      return [];
     }
   }
 
@@ -1025,11 +1604,16 @@ class BackendService {
     const newTrip: Trip = {
       ...data,
       id: data.id || `trip-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      ownerId: this.currentUser.id,
+      workspaceId: this.currentUser.workspaceId,
       createdAt: new Date().toISOString(),
     };
 
     const updated = [...trips, newTrip];
-    this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(updated));
+    this.setItem(this.getUserStorageKey('trips_v2'), JSON.stringify(updated));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(updated));
+    }
 
     this.recordAuditLog({
       action: 'Created Trip',
@@ -1044,13 +1628,27 @@ class BackendService {
 
   updateTrip(updatedTrip: Trip): void {
     this.enforceOwnerPermission('Edit Trip');
+    if (updatedTrip.ownerId && updatedTrip.ownerId !== this.currentUser.id && !isOwnerEmail(this.currentUser.email)) {
+      throw new Error(`403 Forbidden: Ownership violation. You cannot edit records belonging to another account.`);
+    }
     const trips = this.getTrips();
     const index = trips.findIndex((t) => t.id === updatedTrip.id);
     if (index === -1) throw new Error('Trip not found');
 
     const old = trips[index];
-    trips[index] = { ...updatedTrip };
-    this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(trips));
+    if (old.ownerId && old.ownerId !== this.currentUser.id && !isOwnerEmail(this.currentUser.email)) {
+      throw new Error(`403 Forbidden: Ownership violation. You cannot edit records belonging to another account.`);
+    }
+
+    trips[index] = {
+      ...updatedTrip,
+      ownerId: this.currentUser.id,
+      workspaceId: this.currentUser.workspaceId,
+    };
+    this.setItem(this.getUserStorageKey('trips_v2'), JSON.stringify(trips));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(trips));
+    }
 
     this.recordAuditLog({
       action: 'Edited Trip',
@@ -1067,17 +1665,24 @@ class BackendService {
     const target = trips.find((t) => t.id === id);
     if (!target) return;
 
-    const filtered = trips.filter((t) => t.id !== id);
-    this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(filtered));
+    if (target.ownerId && target.ownerId !== this.currentUser.id && !isOwnerEmail(this.currentUser.email)) {
+      throw new Error(`403 Forbidden: Ownership violation. You cannot delete records belonging to another account.`);
+    }
 
-    // Unlink expenses and reimbursements
+    const filtered = trips.filter((t) => t.id !== id);
+    this.setItem(this.getUserStorageKey('trips_v2'), JSON.stringify(filtered));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(filtered));
+    }
+
+    // Unlink expenses and reimbursements for this user
     const expenses = this.getExpenses();
     const updatedExp = expenses.map((e) => (e.tripId === id ? { ...e, tripId: null } : e));
-    this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(updatedExp));
+    this.setItem(this.getUserStorageKey('expenses_v2'), JSON.stringify(updatedExp));
 
     const reimbursements = this.getReimbursements();
     const updatedReimb = reimbursements.map((r) => (r.tripId === id ? { ...r, tripId: null } : r));
-    this.setItem(STORAGE_KEYS.REIMBURSEMENTS, JSON.stringify(updatedReimb));
+    this.setItem(this.getUserStorageKey('reimbursements_v1'), JSON.stringify(updatedReimb));
 
     this.recordAuditLog({
       action: 'Deleted Trip',
@@ -1204,66 +1809,81 @@ class BackendService {
 
   // --- TEAM CHAT & EXPENSE COORDINATION ---
   getConversations(): Conversation[] {
+    if (!this.isAuthenticated()) {
+      return [];
+    }
     this.enforceActiveMember();
-    const raw = this.getItem(STORAGE_KEYS.CONVERSATIONS);
+    const key = this.getUserStorageKey('conversations_v1');
+    const raw = this.getItem(key);
     if (!raw) {
-      const initialConvs: Conversation[] = [
-        {
-          id: 'conv-expense-review',
-          workspaceId: DEFAULT_WORKSPACE.id,
-          title: 'Expense Review & Verification',
-          type: 'group',
-          createdBy: INITIAL_OWNER.id,
-          createdAt: '2026-08-20T12:00:00Z',
-          updatedAt: '2026-08-25T16:00:00Z',
-          members: [INITIAL_OWNER.id, INITIAL_MANAGER.id],
-          lastMessage: {
-            id: 'msg-seed-03',
-            senderName: 'Atul',
-            content: 'Uploaded.',
-            createdAt: '2026-08-25T16:00:00Z',
+      if (isOwnerEmail(this.currentUser.email)) {
+        const legacyRaw = this.getItem(STORAGE_KEYS.CONVERSATIONS);
+        if (legacyRaw) {
+          try {
+            return JSON.parse(legacyRaw);
+          } catch {}
+        }
+        const initialConvs: Conversation[] = [
+          {
+            id: 'conv-expense-review',
+            workspaceId: DEFAULT_WORKSPACE.id,
+            title: 'Expense Review & Verification',
+            type: 'group',
+            createdBy: INITIAL_OWNER.id,
+            createdAt: '2026-08-20T12:00:00Z',
+            updatedAt: '2026-08-25T16:00:00Z',
+            members: [INITIAL_OWNER.id, INITIAL_MANAGER.id],
+            lastMessage: {
+              id: 'msg-seed-03',
+              senderName: 'Atul',
+              content: 'Uploaded.',
+              createdAt: '2026-08-25T16:00:00Z',
+            },
+            unreadCount: 0,
           },
-          unreadCount: 0,
-        },
-        {
-          id: 'conv-mumbai-trip',
-          workspaceId: DEFAULT_WORKSPACE.id,
-          title: 'Service Visit Trip Coordination',
-          type: 'trip',
-          relatedId: 'trip-mumbai-pune-2026',
-          createdBy: INITIAL_OWNER.id,
-          createdAt: '2026-08-22T09:00:00Z',
-          updatedAt: '2026-08-22T10:15:00Z',
-          members: [INITIAL_OWNER.id, INITIAL_MANAGER.id],
-          lastMessage: {
-            id: 'msg-seed-trip-01',
-            senderName: 'Atul',
-            content: 'Starting the Service Visit official travel. All transit tickets will be logged daily.',
-            createdAt: '2026-08-22T10:15:00Z',
+          {
+            id: 'conv-mumbai-trip',
+            workspaceId: DEFAULT_WORKSPACE.id,
+            title: 'Service Visit Trip Coordination',
+            type: 'trip',
+            relatedId: 'trip-mumbai-pune-2026',
+            createdBy: INITIAL_OWNER.id,
+            createdAt: '2026-08-22T09:00:00Z',
+            updatedAt: '2026-08-22T10:15:00Z',
+            members: [INITIAL_OWNER.id, INITIAL_MANAGER.id],
+            lastMessage: {
+              id: 'msg-seed-trip-01',
+              senderName: 'Atul',
+              content: 'Starting the Service Visit official travel. All transit tickets will be logged daily.',
+              createdAt: '2026-08-22T10:15:00Z',
+            },
+            unreadCount: 0,
           },
-          unreadCount: 0,
-        },
-        {
-          id: 'conv-reimb-advance',
-          workspaceId: DEFAULT_WORKSPACE.id,
-          title: '₹10,000 Advance Settlement Discussion',
-          type: 'reimbursement',
-          relatedId: 'reimb-001',
-          createdBy: INITIAL_OWNER.id,
-          createdAt: '2026-09-03T18:30:00Z',
-          updatedAt: '2026-09-03T19:00:00Z',
-          members: [INITIAL_OWNER.id, INITIAL_MANAGER.id],
-          lastMessage: {
-            id: 'msg-seed-reimb-01',
-            senderName: 'Auditor Manager',
-            content: 'Acknowledged ₹10,000 advance transfer received. Remaining balance will be settled on audit clearance.',
-            createdAt: '2026-09-03T19:00:00Z',
+          {
+            id: 'conv-reimb-advance',
+            workspaceId: DEFAULT_WORKSPACE.id,
+            title: '₹10,000 Advance Settlement Discussion',
+            type: 'reimbursement',
+            relatedId: 'reimb-001',
+            createdBy: INITIAL_OWNER.id,
+            createdAt: '2026-09-03T18:30:00Z',
+            updatedAt: '2026-09-03T19:00:00Z',
+            members: [INITIAL_OWNER.id, INITIAL_MANAGER.id],
+            lastMessage: {
+              id: 'msg-seed-reimb-01',
+              senderName: 'Auditor Manager',
+              content: 'Acknowledged ₹10,000 advance transfer received. Remaining balance will be settled on audit clearance.',
+              createdAt: '2026-09-03T19:00:00Z',
+            },
+            unreadCount: 0,
           },
-          unreadCount: 0,
-        },
-      ];
-      this.setItem(STORAGE_KEYS.CONVERSATIONS, JSON.stringify(initialConvs));
-      return initialConvs;
+        ];
+        this.setItem(key, JSON.stringify(initialConvs));
+        this.setItem(STORAGE_KEYS.CONVERSATIONS, JSON.stringify(initialConvs));
+        return initialConvs;
+      }
+      this.setItem(key, JSON.stringify([]));
+      return [];
     }
     try {
       return JSON.parse(raw);
@@ -1658,21 +2278,40 @@ class BackendService {
   // --- GOOGLE DRIVE PAYMENT PROOFS & FINANCE AUDIT ---
 
   getPaymentProofs(): PaymentProof[] {
+    if (!this.isAuthenticated()) {
+      return [];
+    }
     this.enforceActiveMember();
-    const raw = this.getItem(STORAGE_KEYS.PAYMENT_PROOFS);
+    const key = this.getUserStorageKey('payment_proofs_v1');
+    const raw = this.getItem(key);
     let proofs: PaymentProof[] = [];
     if (!raw) {
-      proofs = [...initialPaymentProofs];
-      this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(proofs));
+      if (isOwnerEmail(this.currentUser.email)) {
+        const legacyRaw = this.getItem(STORAGE_KEYS.PAYMENT_PROOFS);
+        if (legacyRaw) {
+          try {
+            const parsed = JSON.parse(legacyRaw);
+            if (Array.isArray(parsed)) proofs = parsed;
+          } catch {
+            proofs = [...initialPaymentProofs];
+          }
+        } else {
+          proofs = [...initialPaymentProofs];
+        }
+        this.setItem(key, JSON.stringify(proofs));
+        this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(proofs));
+      } else {
+        this.setItem(key, JSON.stringify([]));
+        return [];
+      }
     } else {
       try {
         proofs = JSON.parse(raw);
         if (!Array.isArray(proofs)) {
-          proofs = [...initialPaymentProofs];
-          this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(proofs));
+          proofs = [];
         }
       } catch {
-        proofs = [...initialPaymentProofs];
+        proofs = [];
       }
     }
 
@@ -1681,7 +2320,10 @@ class BackendService {
     const beforeProofCount = proofs.length;
     proofs = proofs.filter((p) => !demoProofIds.has(p.id) && !p.id.startsWith('proof-00'));
     if (proofs.length !== beforeProofCount) {
-      this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(proofs));
+      this.setItem(key, JSON.stringify(proofs));
+      if (isOwnerEmail(this.currentUser.email)) {
+        this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(proofs));
+      }
     }
 
     // Run dynamic deduplication detection check on all proofs
@@ -1771,7 +2413,10 @@ class BackendService {
     };
 
     const updated = [newProof, ...proofs];
-    this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(updated));
+    this.setItem(this.getUserStorageKey('payment_proofs_v1'), JSON.stringify(updated));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(updated));
+    }
 
     // If an expense is associated, update expense receipt metadata
     if (newProof.expenseId) {
@@ -1784,7 +2429,10 @@ class BackendService {
             receipt: newProof.previewUrl || expenses[expIdx].receipt,
             receiptName: newProof.fileName,
           };
-          this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+          this.setItem(this.getUserStorageKey('expenses_v2'), JSON.stringify(expenses));
+          if (isOwnerEmail(this.currentUser.email)) {
+            this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+          }
         }
       } catch {
         // Continue
@@ -1837,7 +2485,10 @@ class BackendService {
     }
 
     const merged = [...newItems, ...existingProofs];
-    this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(merged));
+    this.setItem(this.getUserStorageKey('payment_proofs_v1'), JSON.stringify(merged));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(merged));
+    }
 
     // Update any linked expenses
     const expenses = this.getExpenses();
@@ -1856,7 +2507,10 @@ class BackendService {
       }
     }
     if (expensesModified) {
-      this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+      this.setItem(this.getUserStorageKey('expenses_v2'), JSON.stringify(expenses));
+      if (isOwnerEmail(this.currentUser.email)) {
+        this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+      }
     }
 
     this.recordAuditLog({
@@ -1885,7 +2539,10 @@ class BackendService {
       ...updatedProof,
       updatedAt: new Date().toISOString(),
     };
-    this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(proofs));
+    this.setItem(this.getUserStorageKey('payment_proofs_v1'), JSON.stringify(proofs));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(proofs));
+    }
 
     this.recordAuditLog({
       action: 'Updated Payment Proof',
@@ -1903,7 +2560,10 @@ class BackendService {
     if (!target) return;
 
     const filtered = proofs.filter((p) => p.id !== id);
-    this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(filtered));
+    this.setItem(this.getUserStorageKey('payment_proofs_v1'), JSON.stringify(filtered));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(filtered));
+    }
 
     this.recordAuditLog({
       action: 'Deleted Payment Proof',
@@ -1916,7 +2576,10 @@ class BackendService {
 
   clearAllPaymentProofs(): void {
     this.enforceOwnerPermission('Clear All Payment Proofs');
-    this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify([]));
+    this.setItem(this.getUserStorageKey('payment_proofs_v1'), JSON.stringify([]));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify([]));
+    }
     this.recordAuditLog({
       action: 'Cleared All Payment Proofs',
       recordType: 'proof',
@@ -1952,7 +2615,10 @@ class BackendService {
     };
 
     proofs[index] = updatedProof;
-    this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(proofs));
+    this.setItem(this.getUserStorageKey('payment_proofs_v1'), JSON.stringify(proofs));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(proofs));
+    }
 
     // Record review action in official immutable audit log
     this.recordAuditLog({
@@ -1979,6 +2645,7 @@ class BackendService {
 
   // Identify expenses that lack payment proof for audit completion
   getMissingProofExpenses(): Expense[] {
+    if (!this.isAuthenticated()) return [];
     this.enforceActiveMember();
     const expenses = this.getExpenses().filter((e) => e.status === 'valid');
     const proofs = this.getPaymentProofs();
@@ -2005,10 +2672,21 @@ class BackendService {
 
   // Google Drive Configuration
   getGoogleDriveConfig(): GoogleDriveConfig {
+    if (!this.isAuthenticated()) return initialGoogleDriveConfig;
     this.enforceActiveMember();
-    const raw = this.getItem(STORAGE_KEYS.GDRIVE_CONFIG);
+    const key = this.getUserStorageKey('gdrive_config_v1');
+    const raw = this.getItem(key);
     if (!raw) {
-      this.setItem(STORAGE_KEYS.GDRIVE_CONFIG, JSON.stringify(initialGoogleDriveConfig));
+      if (isOwnerEmail(this.currentUser.email)) {
+        const legacy = this.getItem(STORAGE_KEYS.GDRIVE_CONFIG);
+        if (legacy) {
+          try {
+            return JSON.parse(legacy);
+          } catch {
+            // fallback
+          }
+        }
+      }
       return initialGoogleDriveConfig;
     }
     try {
@@ -2026,7 +2704,10 @@ class BackendService {
       ...partial,
       lastSyncedAt: new Date().toISOString(),
     };
-    this.setItem(STORAGE_KEYS.GDRIVE_CONFIG, JSON.stringify(updated));
+    this.setItem(this.getUserStorageKey('gdrive_config_v1'), JSON.stringify(updated));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.GDRIVE_CONFIG, JSON.stringify(updated));
+    }
 
     this.recordAuditLog({
       action: 'Updated Google Drive Configuration',
@@ -2041,19 +2722,37 @@ class BackendService {
 
   // Fetch available files from configured Google Drive folder (virtual categories)
   getDriveFolderFiles(virtualFolder?: string): DriveFolderFile[] {
+    if (!this.isAuthenticated()) return [];
     this.enforceActiveMember();
-    const raw = this.getItem(STORAGE_KEYS.GDRIVE_FILES);
-    let allFiles = [...initialDriveFolderFiles];
-    if (raw) {
-      try {
-        const stored: DriveFolderFile[] = JSON.parse(raw);
-        if (Array.isArray(stored)) {
-          const map = new Map<string, DriveFolderFile>();
-          [...initialDriveFolderFiles, ...stored].forEach((f) => map.set(f.id, f));
-          allFiles = Array.from(map.values());
-        }
-      } catch {
+    const key = this.getUserStorageKey('gdrive_files_v1');
+    const raw = this.getItem(key);
+    let allFiles: DriveFolderFile[] = [];
+    if (!raw) {
+      if (isOwnerEmail(this.currentUser.email)) {
         allFiles = [...initialDriveFolderFiles];
+        const legacy = this.getItem(STORAGE_KEYS.GDRIVE_FILES);
+        if (legacy) {
+          try {
+            const stored: DriveFolderFile[] = JSON.parse(legacy);
+            if (Array.isArray(stored)) {
+              const map = new Map<string, DriveFolderFile>();
+              [...initialDriveFolderFiles, ...stored].forEach((f) => map.set(f.id, f));
+              allFiles = Array.from(map.values());
+            }
+          } catch {
+            allFiles = [...initialDriveFolderFiles];
+          }
+        }
+      } else {
+        this.setItem(key, JSON.stringify([]));
+        return [];
+      }
+    } else {
+      try {
+        allFiles = JSON.parse(raw);
+        if (!Array.isArray(allFiles)) allFiles = [];
+      } catch {
+        allFiles = [];
       }
     }
 
@@ -2071,7 +2770,10 @@ class BackendService {
     const beforeFileCount = allFiles.length;
     allFiles = allFiles.filter((f) => !demoDriveIds.has(f.id) && !f.id.startsWith('gdrive-file-0'));
     if (allFiles.length !== beforeFileCount || !raw) {
-      this.setItem(STORAGE_KEYS.GDRIVE_FILES, JSON.stringify(allFiles));
+      this.setItem(key, JSON.stringify(allFiles));
+      if (isOwnerEmail(this.currentUser.email)) {
+        this.setItem(STORAGE_KEYS.GDRIVE_FILES, JSON.stringify(allFiles));
+      }
     }
 
     if (!virtualFolder || virtualFolder === 'all') {
@@ -2085,7 +2787,10 @@ class BackendService {
     this.enforceOwnerPermission('Delete Drive Folder File');
     const current = this.getDriveFolderFiles();
     const filtered = current.filter((f) => f.id !== fileId);
-    this.setItem(STORAGE_KEYS.GDRIVE_FILES, JSON.stringify(filtered));
+    this.setItem(this.getUserStorageKey('gdrive_files_v1'), JSON.stringify(filtered));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.GDRIVE_FILES, JSON.stringify(filtered));
+    }
     this.recordAuditLog({
       action: 'Deleted Drive File',
       recordType: 'proof',
@@ -2098,7 +2803,10 @@ class BackendService {
   // Clear all files from Google Drive folder gallery
   clearDriveFolderFiles(): void {
     this.enforceOwnerPermission('Clear Drive Files Gallery');
-    this.setItem(STORAGE_KEYS.GDRIVE_FILES, JSON.stringify([]));
+    this.setItem(this.getUserStorageKey('gdrive_files_v1'), JSON.stringify([]));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.GDRIVE_FILES, JSON.stringify([]));
+    }
     this.recordAuditLog({
       action: 'Cleared Drive Files Gallery',
       recordType: 'proof',
@@ -2116,7 +2824,10 @@ class BackendService {
       return file;
     }
     const updated = [file, ...currentFiles];
-    this.setItem(STORAGE_KEYS.GDRIVE_FILES, JSON.stringify(updated));
+    this.setItem(this.getUserStorageKey('gdrive_files_v1'), JSON.stringify(updated));
+    if (isOwnerEmail(this.currentUser.email)) {
+      this.setItem(STORAGE_KEYS.GDRIVE_FILES, JSON.stringify(updated));
+    }
     return file;
   }
 

@@ -329,6 +329,8 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
       <ExpenseTable
         expenses={filteredExpenses}
         trips={trips}
+        totalExpensesCount={expenses.length}
+        onAddExpense={onAddExpense}
         onViewExpense={(expense) => setSelectedExpenseForDetails(expense)}
         onEditExpense={(expense) => onEditExpense(expense)}
         onDeleteExpense={(id) => setExpenseIdToDelete(id)}

@@ -33,7 +33,12 @@ export const TopExpenses: React.FC<TopExpensesProps> = ({ expenses, onSelectExpe
       </div>
 
       <div className="space-y-3">
-        {topList.map((item, index) => {
+        {topList.length === 0 ? (
+          <div className="py-8 text-center text-xs text-slate-400 dark:text-slate-500">
+            No expenses recorded yet.
+          </div>
+        ) : (
+          topList.map((item, index) => {
           const ratio = Math.min(100, Math.round(((item.amount || 0) / maxAmount) * 100));
 
           return (
@@ -81,7 +86,7 @@ export const TopExpenses: React.FC<TopExpensesProps> = ({ expenses, onSelectExpe
               </div>
             </div>
           );
-        })}
+        }))}
       </div>
     </div>
   );

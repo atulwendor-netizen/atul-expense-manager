@@ -1,6 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useExpenseData } from './hooks/useExpenseData';
-import { backendService } from './services/backendService';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { DashboardPage } from './pages/DashboardPage';
@@ -19,6 +18,7 @@ import { ReimbursementModal } from './components/ReimbursementModal';
 import { TripModal } from './components/TripModal';
 import { AccountProfileModal } from './components/AccountProfileModal';
 import { SignInModal } from './components/SignInModal';
+import { PublicAuthPortal } from './components/PublicAuthPortal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { Expense, Reimbursement, Trip } from './types/index';
 import { calculateDashboardMetrics } from './utils/calculations';
@@ -31,6 +31,9 @@ export function App() {
     isRevoked,
     isAuthenticated,
     loginWithCredentials,
+    registerWithCredentials,
+    resetPassword,
+    logout,
     members,
     invitations,
     inviteManager,
@@ -132,10 +135,9 @@ export function App() {
   }, [isManager, addToast, setActiveTab, setSearchQuery]);
 
   const handleSignOut = useCallback(() => {
-    backendService.logout();
+    logout();
     setIsProfileModalOpen(false);
-    setIsSignInModalOpen(true);
-  }, []);
+  }, [logout]);
 
   // Handle Universal Master Link (/login, /portal, /access, ?portal=..., ?login=...) and direct invitation link parameters
   useEffect(() => {
@@ -159,22 +161,24 @@ export function App() {
 
       if (inviteEmail) {
         const cleanEmail = inviteEmail.trim().toLowerCase();
-        const res = loginWithCredentials(cleanEmail);
-        if (res.success && res.user) {
-          addToast(
-            'success',
-            `Welcome! Logged in as ${res.user.role === 'owner' ? 'Owner' : 'Manager / Auditor'} (${cleanEmail}) in ${res.user.role === 'owner' ? 'Full Access' : 'Read-Only Audit Mode'}.`
-          );
-        }
+        loginWithCredentials(cleanEmail).then((res) => {
+          if (res.success && res.user) {
+            addToast(
+              'success',
+              `Welcome! Logged in as ${res.user.role === 'owner' ? 'Owner' : 'Manager / Auditor'} (${cleanEmail}) in ${res.user.role === 'owner' ? 'Full Access' : 'Read-Only Audit Mode'}.`
+            );
+          }
+        });
         window.history.replaceState({}, document.title, '/');
       } else if (roleParam === 'manager') {
-        const res = loginWithCredentials('manager@email.com');
-        if (res.success && res.user) {
-          addToast(
-            'success',
-            'Welcome! Logged in as Manager / Auditor in Read-Only Audit Mode.'
-          );
-        }
+        loginWithCredentials('manager@email.com').then((res) => {
+          if (res.success && res.user) {
+            addToast(
+              'success',
+              'Welcome! Logged in as Manager / Auditor in Read-Only Audit Mode.'
+            );
+          }
+        });
         window.history.replaceState({}, document.title, '/');
       } else if (isMasterPortalRoute) {
         setIsSignInModalOpen(true);
@@ -386,8 +390,8 @@ export function App() {
         <SignInModal
           isOpen={isSignInModalOpen}
           onClose={() => setIsSignInModalOpen(false)}
-          onLoginWithCredentials={(email, password) => {
-            const res = loginWithCredentials(email, password);
+          onLoginWithCredentials={async (email, password) => {
+            const res = await loginWithCredentials(email, password);
             if (res.success) {
               setIsSignInModalOpen(false);
             }
@@ -395,6 +399,51 @@ export function App() {
           }}
           onNotify={addToast}
         />
+      </div>
+    );
+  }
+
+  // Public Access Gate: When not authenticated, strictly render ONLY the PublicAuthPortal.
+  // Zero dashboard elements, zero expense records, zero amounts or charts are mounted in the DOM.
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-slate-100 font-sans selection:bg-blue-600 selection:text-white">
+        <PublicAuthPortal
+          onLogin={async (email, password) => {
+            const res = await loginWithCredentials(email, password);
+            return res;
+          }}
+          onRegister={async (name, email, password) => {
+            const res = await registerWithCredentials(name, email, password);
+            return res;
+          }}
+          onResetPassword={async (email) => {
+            const res = await resetPassword(email);
+            return res;
+          }}
+          onNotify={addToast}
+          isDarkMode={isDarkMode}
+          onToggleDarkMode={toggleDarkMode}
+        />
+
+        {/* Modal maintained for explicit invocation without leaking dashboard data */}
+        {isSignInModalOpen && (
+          <SignInModal
+            isOpen={!isAuthenticated || isSignInModalOpen}
+            onClose={() => setIsSignInModalOpen(false)}
+            onLoginWithCredentials={async (email, password) => {
+              const res = await loginWithCredentials(email, password);
+              if (res.success) {
+                setIsSignInModalOpen(false);
+              }
+              return res;
+            }}
+            onNotify={addToast}
+            isMandatory={false}
+          />
+        )}
+
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       </div>
     );
   }
@@ -678,8 +727,8 @@ export function App() {
       <SignInModal
         isOpen={!isAuthenticated || isSignInModalOpen}
         onClose={() => setIsSignInModalOpen(false)}
-        onLoginWithCredentials={(email, password) => {
-          const res = loginWithCredentials(email, password);
+        onLoginWithCredentials={async (email, password) => {
+          const res = await loginWithCredentials(email, password);
           if (res.success) {
             setIsSignInModalOpen(false);
           }

@@ -63,89 +63,100 @@ export const CategoryBreakdown: React.FC<CategoryBreakdownProps> = ({ expenses }
         </span>
       </div>
 
-      <div className="relative h-56 w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={data}
-              innerRadius={55}
-              outerRadius={80}
-              paddingAngle={3}
-              dataKey="amount"
-              isAnimationActive={true}
-              animationDuration={700}
-              animationEasing="ease-out"
-            >
-              {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} />
-              ))}
-            </Pie>
-            <Tooltip
-              content={({ active, payload }) => {
-                if (active && payload && payload.length) {
-                  const item = payload[0].payload;
-                  return (
-                    <div className="rounded-xl border border-slate-200 bg-white/95 p-2.5 shadow-lg backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/95">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="h-2.5 w-2.5 rounded-full"
-                          style={{ backgroundColor: item.color }}
-                        />
-                        <span className="font-semibold text-xs text-slate-900 dark:text-white">
-                          {item.name}
-                        </span>
-                      </div>
-                      <p className="text-sm font-bold text-slate-900 dark:text-white mt-1">
-                        {formatCurrency(item.amount)}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {item.percentage.toFixed(1)}% ({item.count} items)
-                      </p>
-                    </div>
-                  );
-                }
-                return null;
-              }}
-            />
-          </PieChart>
-        </ResponsiveContainer>
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider dark:text-slate-400">
-            Total
-          </span>
-          <span className="text-sm font-bold text-slate-900 dark:text-white">
-            {formatCurrency(totalSpend)}
-          </span>
+      {data.length === 0 ? (
+        <div className="flex h-56 flex-col items-center justify-center text-center">
+          <PieChartIcon className="h-8 w-8 text-slate-300 dark:text-slate-600 mb-2" />
+          <p className="text-xs text-slate-400 dark:text-slate-500">
+            No categorized expenses recorded yet.
+          </p>
         </div>
-      </div>
-
-      {/* Category legend list */}
-      <div className="mt-2 space-y-2.5 border-t border-slate-100 pt-3 dark:border-slate-800">
-        {data.map((cat) => (
-          <div key={cat.name} className="flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2 min-w-0">
-              <span
-                className="h-2.5 w-2.5 rounded-full shrink-0"
-                style={{ backgroundColor: cat.color }}
-              />
-              <span className="truncate font-medium text-slate-700 dark:text-slate-300">
-                {cat.name}
+      ) : (
+        <>
+          <div className="relative h-56 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={data}
+                  innerRadius={55}
+                  outerRadius={80}
+                  paddingAngle={3}
+                  dataKey="amount"
+                  isAnimationActive={true}
+                  animationDuration={700}
+                  animationEasing="ease-out"
+                >
+                  {data.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const item = payload[0].payload;
+                      return (
+                        <div className="rounded-xl border border-slate-200 bg-white/95 p-2.5 shadow-lg backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/95">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{ backgroundColor: item.color }}
+                            />
+                            <span className="font-semibold text-xs text-slate-900 dark:text-white">
+                              {item.name}
+                            </span>
+                          </div>
+                          <p className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                            {formatCurrency(item.amount)}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {item.percentage.toFixed(1)}% ({item.count} items)
+                          </p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider dark:text-slate-400">
+                Total
               </span>
-              <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                ({cat.count})
-              </span>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <span className="font-semibold text-slate-900 dark:text-white">
-                {formatCurrency(cat.amount)}
-              </span>
-              <span className="w-10 text-right text-[11px] text-slate-500 dark:text-slate-400">
-                {cat.percentage.toFixed(0)}%
+              <span className="text-sm font-bold text-slate-900 dark:text-white">
+                {formatCurrency(totalSpend)}
               </span>
             </div>
           </div>
-        ))}
-      </div>
+
+          {/* Category legend list */}
+          <div className="mt-2 space-y-2.5 border-t border-slate-100 pt-3 dark:border-slate-800">
+            {data.map((cat) => (
+              <div key={cat.name} className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: cat.color }}
+                  />
+                  <span className="truncate font-medium text-slate-700 dark:text-slate-300">
+                    {cat.name}
+                  </span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                    ({cat.count})
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="font-semibold text-slate-900 dark:text-white">
+                    {formatCurrency(cat.amount)}
+                  </span>
+                  <span className="w-10 text-right text-[11px] text-slate-500 dark:text-slate-400">
+                    {cat.percentage.toFixed(0)}%
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 };

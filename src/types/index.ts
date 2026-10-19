@@ -17,6 +17,8 @@ export type ExpenseStatus = 'valid' | 'incomplete';
 
 export interface Expense {
   id: string;
+  ownerId?: string;           // Authenticated user UID who owns this expense
+  workspaceId?: string;       // User's personal workspace ID
   date: string;               // ISO date format YYYY-MM-DD or empty string for incomplete
   description: string;
   category: string;
@@ -42,6 +44,8 @@ export interface Expense {
 
 export interface Reimbursement {
   id: string;
+  ownerId?: string;
+  workspaceId?: string;
   date: string;
   amount: number;
   reference: string;
@@ -52,6 +56,8 @@ export interface Reimbursement {
 
 export interface Trip {
   id: string;
+  ownerId?: string;
+  workspaceId?: string;
   name: string;
   startDate: string;
   endDate: string;

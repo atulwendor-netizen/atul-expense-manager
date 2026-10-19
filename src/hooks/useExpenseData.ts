@@ -275,7 +275,22 @@ export function useExpenseData() {
 
   const refreshState = useCallback(() => {
     try {
-      setCurrentUser(backend.getCurrentUser());
+      const user = backend.getCurrentUser();
+      setCurrentUser(user);
+      if (!backend.isAuthenticated()) {
+        setExpenses([]);
+        setReimbursements([]);
+        setTrips([]);
+        setMembers([]);
+        setInvitations([]);
+        setAuditLogs([]);
+        setConversations([]);
+        setMessages([]);
+        setNotifications([]);
+        setPaymentProofs([]);
+        setDriveFolderFiles([]);
+        return;
+      }
       setExpenses(backend.getExpenses());
       setReimbursements(backend.getReimbursements());
       setTrips(backend.getTrips());
@@ -305,8 +320,8 @@ export function useExpenseData() {
     return updated;
   }, [refreshState]);
 
-  const loginWithCredentials = useCallback((email: string, password?: string) => {
-    const res = backend.loginWithCredentials(email, password);
+  const loginWithCredentials = useCallback(async (email: string, password?: string) => {
+    const res = await backend.loginWithCredentials(email, password);
     if (res.success && res.user) {
       setCurrentUser(res.user);
       refreshState();
@@ -314,10 +329,37 @@ export function useExpenseData() {
     return res;
   }, [refreshState]);
 
+  const registerWithCredentials = useCallback(
+    async (name: string, email: string, password: string) => {
+      const res = await backend.registerWithCredentials(name, email, password);
+      if (res.success && res.user) {
+        setCurrentUser(res.user);
+        refreshState();
+      }
+      return res;
+    },
+    [refreshState]
+  );
+
+  const resetPassword = useCallback(async (email: string) => {
+    return await backend.resetPassword(email);
+  }, []);
+
   const logout = useCallback(() => {
     backend.logout();
-    refreshState();
-  }, [refreshState]);
+    setCurrentUser(backend.getCurrentUser());
+    setExpenses([]);
+    setReimbursements([]);
+    setTrips([]);
+    setMembers([]);
+    setInvitations([]);
+    setAuditLogs([]);
+    setConversations([]);
+    setMessages([]);
+    setNotifications([]);
+    setPaymentProofs([]);
+    setDriveFolderFiles([]);
+  }, []);
 
   // User Management
   const inviteManager = useCallback((email: string, role: UserRole) => {
@@ -575,6 +617,8 @@ export function useExpenseData() {
     isAuthenticated,
     switchUser,
     loginWithCredentials,
+    registerWithCredentials,
+    resetPassword,
     logout,
     members,
     invitations,
