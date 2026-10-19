@@ -42,10 +42,11 @@ export default async function handler(req: any, res: any) {
     if (resendApiKey) {
       try {
         const fromAddress = process.env.RESEND_FROM || 'Atul Expense Manager <onboarding@resend.dev>';
+        console.log(`[Resend] Dispatching password reset email to: ${cleanEmail} from: ${fromAddress}`);
         const response = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${resendApiKey}`,
+            Authorization: `Bearer ${resendApiKey.trim()}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -80,14 +81,18 @@ export default async function handler(req: any, res: any) {
         });
 
         if (response.ok) {
+          const resData = await response.json();
+          console.log('[Resend] Success delivery id:', resData.id);
           emailDispatched = true;
           transportType = 'Resend API';
         } else {
-          const errData = await response.json();
-          dispatchError = errData.message || 'Resend API delivery error';
+          const errData = await response.json().catch(() => ({}));
+          dispatchError = errData.message || `Resend HTTP error ${response.status}`;
+          console.error('[Resend Error]:', response.status, dispatchError);
         }
       } catch (e: any) {
         dispatchError = e.message;
+        console.error('[Resend Exception]:', e);
       }
     }
 
@@ -167,8 +172,9 @@ export default async function handler(req: any, res: any) {
           success: true,
           dispatched: false,
           transportError: dispatchError,
-          message:
-            'A secure password reset link was created! To deliver emails directly to Gmail in production, configure GMAIL_APP_PASSWORD or RESEND_API_KEY in your Vercel project environment variables.',
+          message: dispatchError
+            ? `Email delivery notice: ${dispatchError}`
+            : 'A secure password reset link was created! To deliver emails directly to Gmail in production, configure GMAIL_APP_PASSWORD or RESEND_API_KEY in your Vercel project environment variables.',
           resetUrl,
         })
       );
