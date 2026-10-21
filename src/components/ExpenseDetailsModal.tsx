@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Expense, Trip } from '../types/index';
 import { formatCurrency, formatDate } from '../utils/calculations';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -47,13 +48,13 @@ export const ExpenseDetailsModal: React.FC<ExpenseDetailsModalProps> = ({
   const trip = trips.find((t) => t.id === expense.tripId);
   const isIncomplete = expense.status === 'incomplete' || expense.amount === null;
 
-  return (
+  const modalContent = (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="expense-details-title"
       onClick={handleBackdropClick}
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150 overflow-y-auto"
     >
       <div className="relative w-full max-w-lg max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col rounded-2xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden my-auto">
         {/* Header - Fixed & Accessible */}
@@ -311,4 +312,10 @@ export const ExpenseDetailsModal: React.FC<ExpenseDetailsModalProps> = ({
       </div>
     </div>
   );
+
+  if (typeof document !== 'undefined') {
+    return createPortal(modalContent, document.body);
+  }
+
+  return modalContent;
 };
