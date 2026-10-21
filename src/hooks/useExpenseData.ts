@@ -459,54 +459,68 @@ export function useExpenseData() {
   // CRUD actions (enforced at backend level)
   const addExpense = useCallback((data: Omit<Expense, 'id'>) => {
     const newExp = backend.addExpense(data);
+    setExpenses((prev) => [newExp, ...prev.filter((e) => e.id !== newExp.id)]);
     refreshState();
     return newExp;
   }, [refreshState]);
 
   const updateExpense = useCallback((updated: Expense) => {
     backend.updateExpense(updated);
+    setExpenses((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
     refreshState();
   }, [refreshState]);
 
   const deleteExpense = useCallback((id: string) => {
     backend.deleteExpense(id);
+    const cleanId = id.trim();
+    setExpenses((prev) => prev.filter((e) => (e.id || '').trim() !== cleanId));
     refreshState();
   }, [refreshState]);
 
   const deleteMultipleExpenses = useCallback((ids: string[]) => {
     backend.deleteMultipleExpenses(ids);
+    const idSet = new Set(ids.map((id) => (typeof id === 'string' ? id.trim() : '')).filter(Boolean));
+    setExpenses((prev) => prev.filter((e) => !idSet.has((e.id || '').trim())));
     refreshState();
   }, [refreshState]);
 
   const addReimbursement = useCallback((data: Omit<Reimbursement, 'id'>) => {
     const newReimb = backend.addReimbursement(data);
+    setReimbursements((prev) => [newReimb, ...prev.filter((r) => r.id !== newReimb.id)]);
     refreshState();
     return newReimb;
   }, [refreshState]);
 
   const updateReimbursement = useCallback((updated: Reimbursement) => {
     backend.updateReimbursement(updated);
+    setReimbursements((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
     refreshState();
   }, [refreshState]);
 
   const deleteReimbursement = useCallback((id: string) => {
     backend.deleteReimbursement(id);
+    const cleanId = id.trim();
+    setReimbursements((prev) => prev.filter((r) => (r.id || '').trim() !== cleanId));
     refreshState();
   }, [refreshState]);
 
   const addTrip = useCallback((tripData: Omit<Trip, 'id'>) => {
     const newTrip = backend.addTrip(tripData);
+    setTrips((prev) => [newTrip, ...prev.filter((t) => t.id !== newTrip.id)]);
     refreshState();
     return newTrip;
   }, [refreshState]);
 
   const updateTrip = useCallback((updatedTrip: Trip) => {
     backend.updateTrip(updatedTrip);
+    setTrips((prev) => prev.map((t) => (t.id === updatedTrip.id ? updatedTrip : t)));
     refreshState();
   }, [refreshState]);
 
   const deleteTrip = useCallback((id: string) => {
     backend.deleteTrip(id);
+    const cleanId = id.trim();
+    setTrips((prev) => prev.filter((t) => (t.id || '').trim() !== cleanId));
     refreshState();
     if (activeTripId === id) {
       setActiveTripIdState('all');

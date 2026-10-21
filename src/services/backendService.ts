@@ -1510,6 +1510,43 @@ class BackendService {
     }
   }
 
+  // --- SYNCHRONIZED STORAGE PERSISTENCE HELPERS ---
+  public saveExpenses(expenses: Expense[]): void {
+    const isDefaultWorkspace =
+      this.currentUser.workspaceId === DEFAULT_WORKSPACE.id ||
+      isOwnerEmail(this.currentUser.email);
+
+    this.setItem(this.getUserStorageKey('expenses_v2'), JSON.stringify(expenses));
+    if (isDefaultWorkspace) {
+      this.setItem(`atul_user_${INITIAL_OWNER.id}_expenses_v2`, JSON.stringify(expenses));
+      this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+    }
+  }
+
+  public saveReimbursements(reimbursements: Reimbursement[]): void {
+    const isDefaultWorkspace =
+      this.currentUser.workspaceId === DEFAULT_WORKSPACE.id ||
+      isOwnerEmail(this.currentUser.email);
+
+    this.setItem(this.getUserStorageKey('reimbursements_v1'), JSON.stringify(reimbursements));
+    if (isDefaultWorkspace) {
+      this.setItem(`atul_user_${INITIAL_OWNER.id}_reimbursements_v1`, JSON.stringify(reimbursements));
+      this.setItem(STORAGE_KEYS.REIMBURSEMENTS, JSON.stringify(reimbursements));
+    }
+  }
+
+  public saveTrips(trips: Trip[]): void {
+    const isDefaultWorkspace =
+      this.currentUser.workspaceId === DEFAULT_WORKSPACE.id ||
+      isOwnerEmail(this.currentUser.email);
+
+    this.setItem(this.getUserStorageKey('trips_v2'), JSON.stringify(trips));
+    if (isDefaultWorkspace) {
+      this.setItem(`atul_user_${INITIAL_OWNER.id}_trips_v2`, JSON.stringify(trips));
+      this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(trips));
+    }
+  }
+
   // --- EXPENSES (AUTHORITATIVE CLOUD PERSISTENCE & BASELINE PRESERVATION) ---
   getExpenses(): Expense[] {
     if (!this.isAuthenticated()) {
@@ -1524,15 +1561,18 @@ class BackendService {
     if (isDefaultWorkspace) {
       const ownerKey = `atul_user_${INITIAL_OWNER.id}_expenses_v2`;
       let raw = this.getItem(ownerKey);
-      if (!raw) {
+      if (raw === null || raw === undefined) {
         raw = this.getItem(STORAGE_KEYS.EXPENSES);
+      }
+      if (raw === null || raw === undefined) {
+        raw = this.getItem(this.getUserStorageKey('expenses_v2'));
       }
 
       let baseList = initialExpenses;
-      if (raw) {
+      if (raw !== null && raw !== undefined) {
         try {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
+          if (Array.isArray(parsed)) {
             baseList = parsed;
           }
         } catch {
@@ -1556,9 +1596,8 @@ class BackendService {
         return e;
       });
 
-      if (modified || !raw) {
-        this.setItem(ownerKey, JSON.stringify(expenses));
-        this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+      if (modified || raw === null || raw === undefined) {
+        this.saveExpenses(expenses);
       }
 
       return expenses;
@@ -1653,10 +1692,7 @@ class BackendService {
     };
 
     const updated = [newExpense, ...expenses];
-    this.setItem(this.getUserStorageKey('expenses_v2'), JSON.stringify(updated));
-    if (isOwnerEmail(this.currentUser.email)) {
-      this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(updated));
-    }
+    this.saveExpenses(updated);
 
     this.recordAuditLog({
       action: 'Created Expense',
@@ -1736,10 +1772,7 @@ class BackendService {
       updatedAt: new Date().toISOString(),
     };
 
-    this.setItem(this.getUserStorageKey('expenses_v2'), JSON.stringify(expenses));
-    if (isOwnerEmail(this.currentUser.email)) {
-      this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
-    }
+    this.saveExpenses(expenses);
 
     const oldDesc = `₹${oldExpense.amount ?? '--'} - ${oldExpense.description}`;
     const newDesc = `₹${updatedExpense.amount ?? '--'} - ${updatedExpense.description}`;
@@ -1799,11 +1832,8 @@ class BackendService {
       throw new Error(`403 Forbidden: Ownership violation. You cannot delete records belonging to another account.`);
     }
 
-    const filtered = expenses.filter((e) => e.id !== cleanId);
-    this.setItem(this.getUserStorageKey('expenses_v2'), JSON.stringify(filtered));
-    if (isOwnerEmail(this.currentUser.email)) {
-      this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(filtered));
-    }
+    const filtered = expenses.filter((e) => (e.id || '').trim() !== cleanId);
+    this.saveExpenses(filtered);
 
     this.recordAuditLog({
       action: 'Deleted Expense',
@@ -1870,12 +1900,8 @@ class BackendService {
       }
     }
 
-    const remaining = expenses.filter((e) => !idSet.has(e.id));
-
-    this.setItem(this.getUserStorageKey('expenses_v2'), JSON.stringify(remaining));
-    if (isOwnerEmail(this.currentUser.email)) {
-      this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(remaining));
-    }
+    const remaining = expenses.filter((e) => !idSet.has((e.id || '').trim()));
+    this.saveExpenses(remaining);
 
     const totalDeletedAmt = deletedItems.reduce((sum, e) => sum + (e.amount || 0), 0);
     this.recordAuditLog({
@@ -1901,15 +1927,18 @@ class BackendService {
     if (isDefaultWorkspace) {
       const ownerKey = `atul_user_${INITIAL_OWNER.id}_reimbursements_v1`;
       let raw = this.getItem(ownerKey);
-      if (!raw) {
+      if (raw === null || raw === undefined) {
         raw = this.getItem(STORAGE_KEYS.REIMBURSEMENTS);
+      }
+      if (raw === null || raw === undefined) {
+        raw = this.getItem(this.getUserStorageKey('reimbursements_v1'));
       }
 
       let baseList = initialReimbursements;
-      if (raw) {
+      if (raw !== null && raw !== undefined) {
         try {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
+          if (Array.isArray(parsed)) {
             baseList = parsed;
           }
         } catch {
@@ -1933,9 +1962,8 @@ class BackendService {
         return item;
       });
 
-      if (modified || !raw) {
-        this.setItem(ownerKey, JSON.stringify(list));
-        this.setItem(STORAGE_KEYS.REIMBURSEMENTS, JSON.stringify(list));
+      if (modified || raw === null || raw === undefined) {
+        this.saveReimbursements(list);
       }
 
       return list;
@@ -2022,10 +2050,7 @@ class BackendService {
     };
 
     const updated = [newReimb, ...reimbursements];
-    this.setItem(this.getUserStorageKey('reimbursements_v1'), JSON.stringify(updated));
-    if (isOwnerEmail(this.currentUser.email)) {
-      this.setItem(STORAGE_KEYS.REIMBURSEMENTS, JSON.stringify(updated));
-    }
+    this.saveReimbursements(updated);
 
     this.recordAuditLog({
       action: 'Added Reimbursement',
@@ -2092,10 +2117,7 @@ class BackendService {
       ownerId: this.currentUser.id,
       workspaceId: this.currentUser.workspaceId,
     };
-    this.setItem(this.getUserStorageKey('reimbursements_v1'), JSON.stringify(list));
-    if (isOwnerEmail(this.currentUser.email)) {
-      this.setItem(STORAGE_KEYS.REIMBURSEMENTS, JSON.stringify(list));
-    }
+    this.saveReimbursements(list);
 
     this.recordAuditLog({
       action: 'Edited Reimbursement',
@@ -2152,11 +2174,8 @@ class BackendService {
       throw new Error(`403 Forbidden: Ownership violation. You cannot delete records belonging to another account.`);
     }
 
-    const filtered = list.filter((r) => r.id !== cleanId);
-    this.setItem(this.getUserStorageKey('reimbursements_v1'), JSON.stringify(filtered));
-    if (isOwnerEmail(this.currentUser.email)) {
-      this.setItem(STORAGE_KEYS.REIMBURSEMENTS, JSON.stringify(filtered));
-    }
+    const filtered = list.filter((r) => (r.id || '').trim() !== cleanId);
+    this.saveReimbursements(filtered);
 
     this.recordAuditLog({
       action: 'Deleted Reimbursement',
@@ -2181,15 +2200,18 @@ class BackendService {
     if (isDefaultWorkspace) {
       const ownerKey = `atul_user_${INITIAL_OWNER.id}_trips_v2`;
       let raw = this.getItem(ownerKey);
-      if (!raw) {
+      if (raw === null || raw === undefined) {
         raw = this.getItem(STORAGE_KEYS.TRIPS);
+      }
+      if (raw === null || raw === undefined) {
+        raw = this.getItem(this.getUserStorageKey('trips_v2'));
       }
 
       let baseList = initialTrips;
-      if (raw) {
+      if (raw !== null && raw !== undefined) {
         try {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
+          if (Array.isArray(parsed)) {
             baseList = parsed;
           }
         } catch {
@@ -2218,9 +2240,8 @@ class BackendService {
         return item;
       });
 
-      if (modified || !raw) {
-        this.setItem(ownerKey, JSON.stringify(updated));
-        this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(updated));
+      if (modified || raw === null || raw === undefined) {
+        this.saveTrips(updated);
       }
 
       return updated;
@@ -2307,10 +2328,7 @@ class BackendService {
     };
 
     const updated = [...trips, newTrip];
-    this.setItem(this.getUserStorageKey('trips_v2'), JSON.stringify(updated));
-    if (isOwnerEmail(this.currentUser.email)) {
-      this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(updated));
-    }
+    this.saveTrips(updated);
 
     this.recordAuditLog({
       action: 'Created Trip',
@@ -2377,10 +2395,7 @@ class BackendService {
       ownerId: this.currentUser.id,
       workspaceId: this.currentUser.workspaceId,
     };
-    this.setItem(this.getUserStorageKey('trips_v2'), JSON.stringify(trips));
-    if (isOwnerEmail(this.currentUser.email)) {
-      this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(trips));
-    }
+    this.saveTrips(trips);
 
     this.recordAuditLog({
       action: 'Edited Trip',
@@ -2437,20 +2452,17 @@ class BackendService {
       throw new Error(`403 Forbidden: Ownership violation. You cannot delete records belonging to another account.`);
     }
 
-    const filtered = trips.filter((t) => t.id !== cleanId);
-    this.setItem(this.getUserStorageKey('trips_v2'), JSON.stringify(filtered));
-    if (isOwnerEmail(this.currentUser.email)) {
-      this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(filtered));
-    }
+    const filtered = trips.filter((t) => (t.id || '').trim() !== cleanId);
+    this.saveTrips(filtered);
 
     // Unlink expenses and reimbursements for this user
     const expenses = this.getExpenses();
     const updatedExp = expenses.map((e) => (e.tripId === cleanId ? { ...e, tripId: null } : e));
-    this.setItem(this.getUserStorageKey('expenses_v2'), JSON.stringify(updatedExp));
+    this.saveExpenses(updatedExp);
 
     const reimbursements = this.getReimbursements();
     const updatedReimb = reimbursements.map((r) => (r.tripId === cleanId ? { ...r, tripId: null } : r));
-    this.setItem(this.getUserStorageKey('reimbursements_v1'), JSON.stringify(updatedReimb));
+    this.saveReimbursements(updatedReimb);
 
     this.recordAuditLog({
       action: 'Deleted Trip',
@@ -2601,13 +2613,9 @@ class BackendService {
         workspaceId: DEFAULT_WORKSPACE.id,
       }));
 
-      this.setItem(this.getUserStorageKey('expenses_v2'), JSON.stringify(seededExpenses));
-      this.setItem(this.getUserStorageKey('reimbursements_v1'), JSON.stringify(seededReimbursements));
-      this.setItem(this.getUserStorageKey('trips_v2'), JSON.stringify(seededTrips));
-
-      this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(seededExpenses));
-      this.setItem(STORAGE_KEYS.REIMBURSEMENTS, JSON.stringify(seededReimbursements));
-      this.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(seededTrips));
+      this.saveExpenses(seededExpenses);
+      this.saveReimbursements(seededReimbursements);
+      this.saveTrips(seededTrips);
 
       this.recordAuditLog({
         action: 'Reset Database to Seed',
