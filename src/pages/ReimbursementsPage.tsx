@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Reimbursement, Trip, Expense } from '../types/index';
 import { SummaryCard } from '../components/SummaryCard';
 import { ConfirmationModal } from '../components/ConfirmationModal';
-import { formatCurrency, formatDate } from '../utils/calculations';
+import { formatCurrency, formatDate, calculateTripFinancials } from '../utils/calculations';
 import {
   DollarSign,
   CheckCircle2,
@@ -17,6 +17,7 @@ import {
   MessageSquare,
   FileCheck,
   Calculator,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface ReimbursementsPageProps {
@@ -82,13 +83,51 @@ export const ReimbursementsPage: React.FC<ReimbursementsPageProps> = ({
     return scopedReimbursements.reduce((sum, r) => sum + (r.amount || 0), 0);
   }, [scopedReimbursements]);
 
-  // Pending Reimbursement MUST always be calculated dynamically:
-  // Pending = Total Expense - Total Reimbursement
-  const pendingReimbursement = Math.max(0, totalExpense - totalReimbursement);
+  // Per-Trip Breakdown calculations using canonical calculateTripFinancials
+  const tripBreakdowns = useMemo(() => {
+    return trips.map((trip) => {
+      const summary = calculateTripFinancials(trip.id, expenses, reimbursements);
+      return {
+        trip,
+        expenseCount: summary.validCount,
+        totalExpense: summary.totalSpend,
+        totalReimbursed: summary.totalReimbursed,
+        pending: summary.pendingDue,
+        surplus: summary.surplus,
+        isOverReimbursed: summary.isOverReimbursed,
+        percentage: summary.settlementPct,
+      };
+    });
+  }, [trips, expenses, reimbursements]);
 
+  const unallocatedSummary = useMemo(() => {
+    return calculateTripFinancials(null, expenses, reimbursements);
+  }, [expenses, reimbursements]);
+
+  // Dynamic scope-aware pending, surplus and settlement
+  const { pendingReimbursement, totalSurplus, hasOverReimbursement } = useMemo(() => {
+    if (selectedTripFilter !== 'all') {
+      const summary = calculateTripFinancials(selectedTripFilter, expenses, reimbursements);
+      return {
+        pendingReimbursement: summary.pendingDue,
+        totalSurplus: summary.surplus,
+        hasOverReimbursement: summary.isOverReimbursed,
+      };
+    }
+    // Reconciled sum of trip dues across all trips without silent cross-trip netting
+    const sumPending = tripBreakdowns.reduce((sum, tb) => sum + tb.pending, 0) + unallocatedSummary.pendingDue;
+    const sumSurplus = tripBreakdowns.reduce((sum, tb) => sum + tb.surplus, 0) + unallocatedSummary.surplus;
+    return {
+      pendingReimbursement: sumPending,
+      totalSurplus: sumSurplus,
+      hasOverReimbursement: sumSurplus > 0 || tripBreakdowns.some((tb) => tb.isOverReimbursed),
+    };
+  }, [selectedTripFilter, tripBreakdowns, unallocatedSummary, expenses, reimbursements]);
+
+  // Uncapped settlement percentage to expose over-reimbursement
   const settlementPercentage = totalExpense > 0
-    ? Math.min(100, Math.round((totalReimbursement / totalExpense) * 100))
-    : 0;
+    ? Math.round((totalReimbursement / totalExpense) * 100)
+    : (totalReimbursement > 0 ? 100 : 0);
 
   // Filtered reimbursements for table display
   const filteredReimbursements = useMemo(() => {
@@ -104,31 +143,6 @@ export const ReimbursementsPage: React.FC<ReimbursementsPageProps> = ({
       return true;
     });
   }, [scopedReimbursements, searchQuery, tripMap]);
-
-  // Per-Trip Breakdown calculations
-  const tripBreakdowns = useMemo(() => {
-    return trips.map((trip) => {
-      const tripValidExpenses = expenses.filter(
-        (e) => e.tripId === trip.id && e.status === 'valid' && typeof e.amount === 'number' && !isNaN(e.amount)
-      );
-      const tripTotalExpense = tripValidExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-      const tripReimbursements = reimbursements.filter((r) => r.tripId === trip.id);
-      const tripTotalReimbursed = tripReimbursements.reduce((sum, r) => sum + (r.amount || 0), 0);
-      const tripPending = Math.max(0, tripTotalExpense - tripTotalReimbursed);
-      const tripPct = tripTotalExpense > 0
-        ? Math.min(100, Math.round((tripTotalReimbursed / tripTotalExpense) * 100))
-        : 0;
-
-      return {
-        trip,
-        expenseCount: tripValidExpenses.length,
-        totalExpense: tripTotalExpense,
-        totalReimbursed: tripTotalReimbursed,
-        pending: tripPending,
-        percentage: tripPct,
-      };
-    });
-  }, [trips, expenses, reimbursements]);
 
   const handleConfirmDelete = () => {
     if (reimbursementToDelete) {
@@ -189,26 +203,52 @@ export const ReimbursementsPage: React.FC<ReimbursementsPageProps> = ({
         </div>
       </div>
 
+      {/* Audit Alert Banner when over-reimbursement is flagged */}
+      {hasOverReimbursement && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50/90 p-4 shadow-sm dark:border-amber-700/60 dark:bg-amber-950/40">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-amber-500/10 p-2 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 shrink-0">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-900 dark:text-amber-200">
+                  Audit Notice: Reimbursement Discrepancy Flagged
+                </h4>
+                <span className="rounded-full bg-amber-200/80 px-2 py-0.5 text-[10px] font-bold text-amber-900 dark:bg-amber-900/60 dark:text-amber-200">
+                  Excess Allocation: {formatCurrency(totalSurplus)}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-amber-800 dark:text-amber-300/90 leading-relaxed">
+                One or more trips have allocated reimbursements exceeding eligible spending.
+                In accordance with business rules, overpayments are not silently netted against other trips.
+                Pending balance of {formatCurrency(pendingReimbursement)} strictly reflects valid outstanding trip dues (Net balance: {formatCurrency(totalExpense - totalReimbursement)}).
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Dynamic Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard
           title="Total Reimbursement"
           value={formatCurrency(totalReimbursement)}
-          subtitle={`${reimbursements.length} payment${reimbursements.length > 1 ? 's' : ''} received`}
+          subtitle={totalSurplus > 0 ? `Includes ${formatCurrency(totalSurplus)} excess advance` : `${reimbursements.length} payment${reimbursements.length > 1 ? 's' : ''} received`}
           icon={CheckCircle2}
           accentColor="emerald"
-          badge={{ text: 'Received', variant: 'success' }}
+          badge={totalSurplus > 0 ? { text: `${formatCurrency(totalSurplus)} Excess`, variant: 'warning' } : { text: 'Received', variant: 'success' }}
         />
 
         <SummaryCard
           title="Pending Reimbursement"
           value={formatCurrency(pendingReimbursement)}
-          subtitle="Total Expense − Reimbursement"
+          subtitle={totalSurplus > 0 ? `Reconciled trip dues (Net: ${formatCurrency(totalExpense - totalReimbursement)})` : "Total Expense − Reimbursement"}
           icon={Clock}
           accentColor="amber"
           badge={{
-            text: pendingReimbursement === 0 ? 'Settled' : 'Due from Company',
-            variant: pendingReimbursement === 0 ? 'success' : 'warning',
+            text: hasOverReimbursement ? 'Discrepancy Flagged' : (pendingReimbursement === 0 ? 'Settled' : 'Due from Company'),
+            variant: pendingReimbursement === 0 && !hasOverReimbursement ? 'success' : 'warning',
           }}
         />
 
@@ -225,10 +265,10 @@ export const ReimbursementsPage: React.FC<ReimbursementsPageProps> = ({
           value={`${settlementPercentage}%`}
           subtitle={`${formatCurrency(totalReimbursement)} of ${formatCurrency(totalExpense)} cleared`}
           icon={TrendingUp}
-          accentColor="violet"
+          accentColor={hasOverReimbursement ? "amber" : "violet"}
           badge={{
-            text: settlementPercentage === 100 ? 'Fully Paid' : 'Partially Cleared',
-            variant: settlementPercentage === 100 ? 'success' : 'neutral',
+            text: hasOverReimbursement ? 'Over-reimbursed' : (settlementPercentage >= 100 ? 'Fully Paid' : 'Partially Cleared'),
+            variant: hasOverReimbursement ? 'warning' : (settlementPercentage >= 100 ? 'success' : 'neutral'),
           }}
         />
       </div>
@@ -239,17 +279,21 @@ export const ReimbursementsPage: React.FC<ReimbursementsPageProps> = ({
           <div className="flex items-center gap-2">
             <DollarSign className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             <h3 className="font-semibold text-slate-900 dark:text-white">
-              Overall Settlement Progress
+              {selectedTripFilter === 'all' ? 'Overall Settlement Progress' : 'Trip Settlement Progress'}
             </h3>
           </div>
-          <span className="font-bold text-slate-900 dark:text-white">
-            {formatCurrency(totalReimbursement)} / {formatCurrency(totalExpense)} ({settlementPercentage}%)
+          <span className={`font-bold ${hasOverReimbursement ? 'text-purple-600 dark:text-purple-400' : 'text-slate-900 dark:text-white'}`}>
+            {formatCurrency(totalReimbursement)} / {formatCurrency(totalExpense)} ({settlementPercentage}%{hasOverReimbursement ? ' • Over-reimbursed' : ''})
           </span>
         </div>
         <div className="h-3 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-blue-500 transition-all duration-700"
-            style={{ width: `${settlementPercentage}%` }}
+            className={`h-full rounded-full transition-all duration-700 ${
+              hasOverReimbursement
+                ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-purple-600'
+                : 'bg-gradient-to-r from-emerald-500 via-teal-500 to-blue-500'
+            }`}
+            style={{ width: `${Math.min(100, settlementPercentage)}%` }}
           />
         </div>
         <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
@@ -411,12 +455,18 @@ export const ReimbursementsPage: React.FC<ReimbursementsPageProps> = ({
                 </div>
                 <span
                   className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                    tb.pending === 0
+                    tb.isOverReimbursed
+                      ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300'
+                      : tb.pending === 0
                       ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                       : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
                   }`}
                 >
-                  {tb.pending === 0 ? 'Fully Reimbursed' : `Due ₹${tb.pending.toLocaleString('en-IN')}`}
+                  {tb.isOverReimbursed
+                    ? `Over-reimbursed (+₹${tb.surplus.toLocaleString('en-IN')})`
+                    : tb.pending === 0
+                    ? 'Fully Reimbursed'
+                    : `Due ₹${tb.pending.toLocaleString('en-IN')}`}
                 </span>
               </div>
 
@@ -434,9 +484,17 @@ export const ReimbursementsPage: React.FC<ReimbursementsPageProps> = ({
                   </p>
                 </div>
                 <div>
-                  <span className="text-[10px] font-medium text-slate-400 uppercase">Pending</span>
-                  <p className="font-bold text-amber-600 dark:text-amber-400 mt-0.5">
-                    {formatCurrency(tb.pending)}
+                  <span className="text-[10px] font-medium text-slate-400 uppercase">
+                    {tb.isOverReimbursed ? 'Surplus' : 'Pending'}
+                  </span>
+                  <p
+                    className={`font-bold mt-0.5 ${
+                      tb.isOverReimbursed
+                        ? 'text-purple-600 dark:text-purple-400'
+                        : 'text-amber-600 dark:text-amber-400'
+                    }`}
+                  >
+                    {tb.isOverReimbursed ? `+${formatCurrency(tb.surplus)}` : formatCurrency(tb.pending)}
                   </p>
                 </div>
               </div>
@@ -444,14 +502,24 @@ export const ReimbursementsPage: React.FC<ReimbursementsPageProps> = ({
               <div className="space-y-1">
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="text-slate-500 dark:text-slate-400">Progress</span>
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">
-                    {tb.percentage}%
+                  <span
+                    className={`font-semibold ${
+                      tb.isOverReimbursed
+                        ? 'text-purple-600 dark:text-purple-400'
+                        : 'text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    {tb.percentage}%{tb.isOverReimbursed ? ' • Over' : ''}
                   </span>
                 </div>
                 <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                   <div
-                    className="h-full rounded-full bg-emerald-500 transition-all duration-500"
-                    style={{ width: `${tb.percentage}%` }}
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      tb.isOverReimbursed
+                        ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-purple-600'
+                        : 'bg-emerald-500'
+                    }`}
+                    style={{ width: `${Math.min(100, tb.percentage)}%` }}
                   />
                 </div>
               </div>

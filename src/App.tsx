@@ -375,8 +375,8 @@ export function App() {
     } else {
       explicitDays = 15;
     }
-    return calculateDashboardMetrics(searchedExpenses, tripFilteredReimbursements, explicitDays);
-  }, [searchedExpenses, tripFilteredReimbursements, currentTrip]);
+    return calculateDashboardMetrics(searchedExpenses, tripFilteredReimbursements, explicitDays, trips);
+  }, [searchedExpenses, tripFilteredReimbursements, currentTrip, trips]);
 
   // Handle immediate revocation lock
   if (isRevoked) {

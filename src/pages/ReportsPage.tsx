@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Expense, Reimbursement, Trip } from '../types/index';
 import { SummaryCard } from '../components/SummaryCard';
-import { formatCurrency, formatDate } from '../utils/calculations';
+import { formatCurrency, formatDate, calculateTripFinancials } from '../utils/calculations';
 import { exportExpensesToCSV, exportExpensesToExcel, exportReimbursementClaimToExcel } from '../utils/export';
 import {
   FileSpreadsheet,
@@ -95,8 +95,35 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
     return scopedReimbursements.reduce((sum, r) => sum + (r.amount || 0), 0);
   }, [scopedReimbursements]);
 
-  const pendingDue = Math.max(0, totalSpend - totalReimbursed);
-  const settlementPct = totalSpend > 0 ? Math.min(100, Math.round((totalReimbursed / totalSpend) * 100)) : 0;
+  const { pendingDue, totalSurplus, hasDiscrepancy } = useMemo(() => {
+    if (selectedTrip !== 'all') {
+      const summary = calculateTripFinancials(selectedTrip, validExpenses, scopedReimbursements);
+      return {
+        pendingDue: summary.pendingDue,
+        totalSurplus: summary.surplus,
+        hasDiscrepancy: summary.isOverReimbursed,
+      };
+    }
+    let pSum = 0;
+    let sSum = 0;
+    trips.forEach((t) => {
+      const s = calculateTripFinancials(t.id, validExpenses, scopedReimbursements);
+      pSum += s.pendingDue;
+      sSum += s.surplus;
+    });
+    const unalloc = calculateTripFinancials(null, validExpenses, scopedReimbursements);
+    pSum += unalloc.pendingDue;
+    sSum += unalloc.surplus;
+    return {
+      pendingDue: pSum,
+      totalSurplus: sSum,
+      hasDiscrepancy: sSum > 0,
+    };
+  }, [selectedTrip, validExpenses, scopedReimbursements, trips]);
+
+  const settlementPct = totalSpend > 0
+    ? Math.round((totalReimbursed / totalSpend) * 100)
+    : (totalReimbursed > 0 ? 100 : 0);
 
   // Category breakdown for report
   const categoryBreakdown = useMemo(() => {
@@ -287,19 +314,19 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
         <SummaryCard
           title="Reimbursements Received"
           value={formatCurrency(totalReimbursed)}
-          subtitle={`${scopedReimbursements.length} payments recorded`}
+          subtitle={totalSurplus > 0 ? `Includes ${formatCurrency(totalSurplus)} excess advance` : `${scopedReimbursements.length} payments recorded`}
           icon={CheckCircle2}
           accentColor="emerald"
-          badge={{ text: 'Settled', variant: 'success' }}
+          badge={totalSurplus > 0 ? { text: `${formatCurrency(totalSurplus)} Excess`, variant: 'warning' } : { text: 'Settled', variant: 'success' }}
         />
 
         <SummaryCard
           title="Pending Due Balance"
           value={formatCurrency(pendingDue)}
-          subtitle="Total Spend − Reimbursed"
+          subtitle={totalSurplus > 0 ? `Reconciled dues (Net: ${formatCurrency(totalSpend - totalReimbursed)})` : "Sum of pending trip claims"}
           icon={Clock}
           accentColor="amber"
-          badge={{ text: pendingDue === 0 ? 'Settled' : 'Payable', variant: pendingDue === 0 ? 'success' : 'warning' }}
+          badge={{ text: hasDiscrepancy ? 'Discrepancy Flagged' : (pendingDue === 0 ? 'Settled' : 'Payable'), variant: pendingDue === 0 && !hasDiscrepancy ? 'success' : 'warning' }}
         />
 
         <SummaryCard

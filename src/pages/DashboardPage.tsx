@@ -199,10 +199,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <SummaryCard
             title="Reimbursement"
             value={formatCurrency(metrics.totalReimbursement)}
-            subtitle={reimbursements.length > 0 ? `${reimbursements.length} payment${reimbursements.length > 1 ? 's' : ''} logged` : 'No payments yet'}
+            subtitle={metrics.totalOverReimbursement && metrics.totalOverReimbursement > 0 ? `Includes ${formatCurrency(metrics.totalOverReimbursement)} excess advance` : (reimbursements.length > 0 ? `${reimbursements.length} payment${reimbursements.length > 1 ? 's' : ''} logged` : 'No payments yet')}
             icon={CheckCircle}
             accentColor="emerald"
-            badge={{
+            badge={metrics.totalOverReimbursement && metrics.totalOverReimbursement > 0 ? { text: `${formatCurrency(metrics.totalOverReimbursement)} Excess`, variant: 'warning' } : {
               text: reimbursements.length > 0 ? `${reimbursements.length} Logged` : 'None',
               variant: reimbursements.length > 0 ? 'success' : 'neutral',
             }}
@@ -215,12 +215,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <SummaryCard
             title="Pending Amount"
             value={formatCurrency(metrics.pendingReimbursement)}
-            subtitle="Expense - Reimbursement"
+            subtitle={metrics.totalOverReimbursement && metrics.totalOverReimbursement > 0 ? `Reconciled dues (Net: ${formatCurrency(metrics.netBalance || 0)})` : "Sum of pending trip claims"}
             icon={Clock}
             accentColor="amber"
             badge={{
-              text: metrics.pendingReimbursement === 0 ? 'Cleared' : 'Awaiting',
-              variant: metrics.pendingReimbursement === 0 ? 'success' : 'warning',
+              text: metrics.hasDiscrepancy ? 'Discrepancy Flagged' : (metrics.pendingReimbursement === 0 ? 'Cleared' : 'Awaiting'),
+              variant: metrics.pendingReimbursement === 0 && !metrics.hasDiscrepancy ? 'success' : 'warning',
             }}
             onClick={() => onNavigateTab('reimbursements')}
           />

@@ -455,8 +455,8 @@ export function useExpenseData() {
     } else {
       durationDays = undefined;
     }
-    return calculateDashboardMetrics(tripFilteredExpenses, tripFilteredReimbursements, durationDays);
-  }, [tripFilteredExpenses, tripFilteredReimbursements, currentTrip]);
+    return calculateDashboardMetrics(tripFilteredExpenses, tripFilteredReimbursements, durationDays, trips);
+  }, [tripFilteredExpenses, tripFilteredReimbursements, currentTrip, trips]);
 
   // CRUD actions (enforced at backend level)
   const addExpense = useCallback((data: Omit<Expense, 'id'>) => {

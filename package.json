@@ -8,7 +8,7 @@
     "build:api": "npx esbuild server/auth/google/status.ts --bundle --platform=node --format=esm --packages=external --outfile=api/auth/google/status.js && npx esbuild server/auth/google/url.ts --bundle --platform=node --format=esm --packages=external --outfile=api/auth/google/url.js && npx esbuild server/auth/google/callback.ts --bundle --platform=node --format=esm --packages=external --outfile=api/auth/google/callback.js && npx esbuild server/auth/google/disconnect.ts --bundle --platform=node --format=esm --packages=external --outfile=api/auth/google/disconnect.js && npx esbuild server/drive/files.ts --bundle --platform=node --format=esm --packages=external --outfile=api/drive/files.js && npx esbuild server/auth/send-reset-link.ts --bundle --platform=node --format=esm --packages=external --outfile=api/auth/send-reset-link.js && npx esbuild server/auth/verify-reset-token.ts --bundle --platform=node --format=esm --packages=external --outfile=api/auth/verify-reset-token.js",
     "build": "npm run build:api && tsc && vite build",
     "preview": "vite preview",
-    "test": "node scripts/verify-rbac-production.js && node scripts/verify-calculator-features.js && node scripts/verify-scrolling-fix.js"
+    "test": "node scripts/verify-rbac-production.js && node scripts/verify-calculator-features.js && node scripts/verify-scrolling-fix.js && node scripts/verify-financial-calculations.js && node scripts/verify-trip-reimbursement-calculations.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",

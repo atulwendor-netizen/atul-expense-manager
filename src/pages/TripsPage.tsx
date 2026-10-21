@@ -17,6 +17,7 @@ import {
   Archive,
   ArrowRight,
   MessageSquare,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface TripsPageProps {
@@ -54,32 +55,13 @@ export const TripsPage: React.FC<TripsPageProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('all');
   const [tripToDelete, setTripToDelete] = useState<Trip | null>(null);
 
-  // Overall calculations across all trips
-  const overallStats = useMemo(() => {
-    const totalTripsCount = trips.length;
-    const activeTripsCount = trips.filter((t) => !t.isArchived).length;
-    const totalSpend = expenses
-      .filter((e) => e.status === 'valid' && typeof e.amount === 'number' && !isNaN(e.amount))
-      .reduce((sum, e) => sum + (e.amount || 0), 0);
-    const totalReimbursed = reimbursements.reduce((sum, r) => sum + (r.amount || 0), 0);
-    const pendingDue = Math.max(0, totalSpend - totalReimbursed);
-
-    return {
-      totalTripsCount,
-      activeTripsCount,
-      totalSpend,
-      totalReimbursed,
-      pendingDue,
-    };
-  }, [trips, expenses, reimbursements]);
-
   // Per-trip computed metrics
   const tripDetails = useMemo(() => {
     return trips.map((trip) => {
       // Valid & incomplete expenses for this trip
       const tripExpenses = expenses.filter((e) => e.tripId === trip.id);
       const validExpenses = tripExpenses.filter(
-        (e) => e.status === 'valid' && typeof e.amount === 'number' && !isNaN(e.amount)
+        (e) => e.status === 'valid' && typeof e.amount === 'number' && e.amount !== null && !isNaN(e.amount)
       );
       const incompleteCount = tripExpenses.filter(
         (e) => e.status === 'incomplete' || e.amount === null || isNaN(e.amount as number)
@@ -92,6 +74,8 @@ export const TripsPage: React.FC<TripsPageProps> = ({
       const totalReimbursed = tripReimbursements.reduce((sum, r) => sum + (r.amount || 0), 0);
 
       const pendingDue = Math.max(0, totalSpend - totalReimbursed);
+      const surplus = Math.max(0, totalReimbursed - totalSpend);
+      const isOverReimbursed = totalReimbursed > totalSpend;
 
       // Duration in days
       let durationDays = 1;
@@ -114,8 +98,11 @@ export const TripsPage: React.FC<TripsPageProps> = ({
       // Canonical Daily Average = Total Spend / Active Spending Days
       const dailyAverage = activeSpendingDays > 0 ? Math.round(totalSpend / activeSpendingDays) : 0;
 
+      // Uncapped settlement percentage so over-reimbursement is not hidden at 100%
       const settlementPct = totalSpend > 0
-        ? Math.min(100, Math.round((totalReimbursed / totalSpend) * 100))
+        ? Math.round((totalReimbursed / totalSpend) * 100)
+        : totalReimbursed > 0
+        ? 100
         : 0;
 
       return {
@@ -126,6 +113,8 @@ export const TripsPage: React.FC<TripsPageProps> = ({
         totalSpend,
         totalReimbursed,
         pendingDue,
+        surplus,
+        isOverReimbursed,
         durationDays,
         activeSpendingDays,
         dailyAverage,
@@ -133,6 +122,49 @@ export const TripsPage: React.FC<TripsPageProps> = ({
       };
     });
   }, [trips, expenses, reimbursements]);
+
+  // Overall calculations across all trips (reconciled sum of trip dues)
+  const overallStats = useMemo(() => {
+    const totalTripsCount = trips.length;
+    const activeTripsCount = trips.filter((t) => !t.isArchived).length;
+
+    // Check for any unallocated expenses / reimbursements
+    const tripIdSet = new Set(trips.map((t) => t.id));
+    const unallocatedExpenses = expenses.filter(
+      (e) => (!e.tripId || !tripIdSet.has(e.tripId)) && e.status === 'valid' && typeof e.amount === 'number' && e.amount !== null && !isNaN(e.amount)
+    );
+    const unallocatedSpend = unallocatedExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+
+    const unallocatedReimbursements = reimbursements.filter(
+      (r) => !r.tripId || !tripIdSet.has(r.tripId)
+    );
+    const unallocatedReimbursed = unallocatedReimbursements.reduce((sum, r) => sum + (r.amount || 0), 0);
+    const unallocatedPending = Math.max(0, unallocatedSpend - unallocatedReimbursed);
+    const unallocatedSurplus = Math.max(0, unallocatedReimbursed - unallocatedSpend);
+
+    const totalSpend = tripDetails.reduce((sum, td) => sum + td.totalSpend, 0) + unallocatedSpend;
+    const totalReimbursed = reimbursements.reduce((sum, r) => sum + (r.amount || 0), 0);
+
+    // Reconciled Total Pending = sum of trip pending claims + unallocated pending (no cross-trip netting)
+    const pendingDue = tripDetails.reduce((sum, td) => sum + td.pendingDue, 0) + unallocatedPending;
+    const totalSurplus = tripDetails.reduce((sum, td) => sum + td.surplus, 0) + unallocatedSurplus;
+
+    const netBalance = totalSpend - totalReimbursed;
+    const hasOverReimbursement = totalSurplus > 0 || tripDetails.some((td) => td.isOverReimbursed);
+
+    return {
+      totalTripsCount,
+      activeTripsCount,
+      totalSpend,
+      totalReimbursed,
+      pendingDue,
+      totalSurplus,
+      netBalance,
+      hasOverReimbursement,
+      unallocatedSpend,
+      unallocatedReimbursed,
+    };
+  }, [trips, tripDetails, expenses, reimbursements]);
 
   // Filtered trips
   const filteredTrips = useMemo(() => {
@@ -193,6 +225,30 @@ export const TripsPage: React.FC<TripsPageProps> = ({
         )}
       </div>
 
+      {/* Reimbursement Discrepancy Alert Banner */}
+      {overallStats.hasOverReimbursement && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50/90 p-4 text-amber-900 shadow-sm dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-900/80 dark:text-amber-300">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-bold">Reimbursement Discrepancy Flagged for Audit</h4>
+                <span className="rounded-full bg-amber-200 dark:bg-amber-800 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-900 dark:text-amber-200">
+                  Audit Flag
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-amber-800 dark:text-amber-300/90 leading-relaxed">
+                One or more trips have allocated reimbursements exceeding eligible spending (Total excess advance: {formatCurrency(overallStats.totalSurplus)}).
+                In accordance with business rules, overpayments are not silently netted against other trips.
+                Pending claim of {formatCurrency(overallStats.pendingDue)} strictly reflects valid outstanding trip dues (Net cross-trip balance: {formatCurrency(overallStats.netBalance)}).
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard
@@ -214,19 +270,26 @@ export const TripsPage: React.FC<TripsPageProps> = ({
         <SummaryCard
           title="Total Reimbursed"
           value={formatCurrency(overallStats.totalReimbursed)}
-          subtitle="Cleared from company"
+          subtitle={overallStats.totalSurplus > 0 ? `Includes ${formatCurrency(overallStats.totalSurplus)} excess advance` : "Cleared from company"}
           icon={CheckCircle2}
           accentColor="emerald"
-          badge={{ text: 'Settled', variant: 'success' }}
+          badge={overallStats.totalSurplus > 0 ? { text: `${formatCurrency(overallStats.totalSurplus)} Excess`, variant: 'warning' } : { text: 'Settled', variant: 'success' }}
         />
 
         <SummaryCard
           title="Pending Reimbursement"
           value={formatCurrency(overallStats.pendingDue)}
-          subtitle="Total Spend − Reimbursed"
+          subtitle={overallStats.totalSurplus > 0 ? `Reconciled trip dues (Net: ${formatCurrency(overallStats.netBalance)})` : "Sum of pending trip claims"}
           icon={Clock}
           accentColor="amber"
-          badge={{ text: overallStats.pendingDue === 0 ? 'Settled' : 'Pending Claim', variant: overallStats.pendingDue === 0 ? 'success' : 'warning' }}
+          badge={{
+            text: overallStats.hasOverReimbursement
+              ? 'Discrepancy Flagged'
+              : overallStats.pendingDue === 0
+              ? 'Settled'
+              : 'Pending Claim',
+            variant: overallStats.pendingDue === 0 && !overallStats.hasOverReimbursement ? 'success' : 'warning',
+          }}
         />
       </div>
 
@@ -290,6 +353,8 @@ export const TripsPage: React.FC<TripsPageProps> = ({
               totalSpend,
               totalReimbursed,
               pendingDue,
+              surplus,
+              isOverReimbursed,
               durationDays,
               activeSpendingDays,
               dailyAverage,
@@ -320,6 +385,12 @@ export const TripsPage: React.FC<TripsPageProps> = ({
                           <Clock className="h-3 w-3 text-slate-400" />
                           {durationDays} Days Duration
                         </span>
+                        {isOverReimbursed && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-0.5 text-[11px] font-bold text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                            <AlertTriangle className="h-3 w-3 text-purple-600 dark:text-purple-400" />
+                            Over-reimbursed (+{formatCurrency(surplus)})
+                          </span>
+                        )}
                         {trip.isArchived && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-700 dark:bg-amber-950 dark:text-amber-300">
                             <Archive className="h-3 w-3" />
@@ -419,13 +490,19 @@ export const TripsPage: React.FC<TripsPageProps> = ({
 
                       <div>
                         <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                          Pending Balance
+                          {isOverReimbursed ? 'Over-Reimbursed' : 'Pending Balance'}
                         </span>
-                        <div className="text-base font-bold text-amber-600 dark:text-amber-400">
-                          {formatCurrency(pendingDue)}
+                        <div
+                          className={`text-base font-bold ${
+                            isOverReimbursed
+                              ? 'text-purple-600 dark:text-purple-400'
+                              : 'text-amber-600 dark:text-amber-400'
+                          }`}
+                        >
+                          {isOverReimbursed ? `+${formatCurrency(surplus)}` : formatCurrency(pendingDue)}
                         </div>
                         <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                          Due from company
+                          {isOverReimbursed ? 'Review required (Excess)' : 'Due from company'}
                         </span>
                       </div>
 
@@ -447,14 +524,24 @@ export const TripsPage: React.FC<TripsPageProps> = ({
                     <div className="space-y-1 mb-5">
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="text-slate-500 dark:text-slate-400">Settlement Progress</span>
-                        <span className="font-bold text-slate-900 dark:text-white">
-                          {formatCurrency(totalReimbursed)} / {formatCurrency(totalSpend)} ({settlementPct}%)
+                        <span
+                          className={`font-bold ${
+                            isOverReimbursed
+                              ? 'text-purple-600 dark:text-purple-400'
+                              : 'text-slate-900 dark:text-white'
+                          }`}
+                        >
+                          {formatCurrency(totalReimbursed)} / {formatCurrency(totalSpend)} ({settlementPct}%{isOverReimbursed ? ' • Over-reimbursed' : ''})
                         </span>
                       </div>
                       <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                         <div
-                          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-500"
-                          style={{ width: `${settlementPct}%` }}
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            isOverReimbursed
+                              ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-purple-600'
+                              : 'bg-gradient-to-r from-emerald-500 to-teal-500'
+                          }`}
+                          style={{ width: `${Math.min(100, settlementPct)}%` }}
                         />
                       </div>
                     </div>

@@ -163,10 +163,20 @@ export const CurrentTripSummary: React.FC<CurrentTripSummaryProps> = ({
           </div>
           <div>
             <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
-              Pending Reimbursement
+              {metrics.totalOverReimbursement && metrics.totalOverReimbursement > 0 && !isAllTrips
+                ? 'Surplus Advance'
+                : 'Pending Reimbursement'}
             </span>
-            <p className="mt-0.5 text-lg font-bold text-amber-400">
-              {formatCurrency(metrics.pendingReimbursement)}
+            <p
+              className={`mt-0.5 text-lg font-bold ${
+                metrics.totalOverReimbursement && metrics.totalOverReimbursement > 0 && !isAllTrips
+                  ? 'text-purple-400'
+                  : 'text-amber-400'
+              }`}
+            >
+              {metrics.totalOverReimbursement && metrics.totalOverReimbursement > 0 && !isAllTrips
+                ? `+${formatCurrency(metrics.totalOverReimbursement)}`
+                : formatCurrency(metrics.pendingReimbursement)}
             </p>
           </div>
         </div>

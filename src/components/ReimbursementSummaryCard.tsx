@@ -20,12 +20,16 @@ export const ReimbursementSummaryCard: React.FC<ReimbursementSummaryCardProps> =
   onNavigateToReimbursements,
   onAddReimbursement,
 }) => {
+  const surplus = Math.max(0, totalReimbursement - totalExpense);
+  const isOverReimbursed = totalReimbursement > totalExpense;
   const percentage = totalExpense > 0
-    ? Math.min(100, Math.round((totalReimbursement / totalExpense) * 100))
+    ? Math.round((totalReimbursement / totalExpense) * 100)
+    : totalReimbursement > 0
+    ? 100
     : 0;
 
-  const isFullyReimbursed = pendingReimbursement <= 0 && totalExpense > 0;
-  const isPartiallyReimbursed = totalReimbursement > 0 && pendingReimbursement > 0;
+  const isFullyReimbursed = !isOverReimbursed && pendingReimbursement <= 0 && totalExpense > 0;
+  const isPartiallyReimbursed = !isOverReimbursed && totalReimbursement > 0 && pendingReimbursement > 0;
 
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800/80 dark:bg-slate-900 flex flex-col justify-between">
@@ -37,7 +41,12 @@ export const ReimbursementSummaryCard: React.FC<ReimbursementSummaryCardProps> =
               Reimbursement Status
             </h3>
           </div>
-          {isFullyReimbursed ? (
+          {isOverReimbursed ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-800 dark:bg-purple-950 dark:text-purple-300">
+              <CheckCircle2 className="h-3 w-3" />
+              Over-reimbursed (+₹{surplus.toLocaleString('en-IN')})
+            </span>
+          ) : isFullyReimbursed ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
               <CheckCircle2 className="h-3 w-3" />
               Settled
@@ -80,18 +89,24 @@ export const ReimbursementSummaryCard: React.FC<ReimbursementSummaryCardProps> =
             <span className="text-slate-600 dark:text-slate-400 font-medium">
               Reimbursement Progress
             </span>
-            <span className="font-bold text-slate-900 dark:text-white">
-              {percentage}%
+            <span className={`font-bold ${isOverReimbursed ? 'text-purple-600 dark:text-purple-400' : 'text-slate-900 dark:text-white'}`}>
+              {percentage}%{isOverReimbursed ? ' (Over-reimbursed)' : ''}
             </span>
           </div>
           <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-700"
-              style={{ width: `${percentage}%` }}
+              className={`h-full rounded-full transition-all duration-700 ${
+                isOverReimbursed
+                  ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-purple-600'
+                  : 'bg-gradient-to-r from-emerald-500 to-teal-400'
+              }`}
+              style={{ width: `${Math.min(100, percentage)}%` }}
             />
           </div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
-            {formatCurrency(totalReimbursement)} of {formatCurrency(totalExpense)} total expenditure cleared
+            {isOverReimbursed
+              ? `${formatCurrency(totalReimbursement)} of ${formatCurrency(totalExpense)} expenditure (Includes ${formatCurrency(surplus)} excess advance)`
+              : `${formatCurrency(totalReimbursement)} of ${formatCurrency(totalExpense)} total expenditure cleared`}
           </p>
         </div>
 

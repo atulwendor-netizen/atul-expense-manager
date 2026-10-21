@@ -76,6 +76,9 @@ export interface DashboardMetrics {
   tripDurationDays: number;
   dailyAverage: number;
   activeSpendingDays: number;
+  totalOverReimbursement?: number;
+  netBalance?: number;
+  hasDiscrepancy?: boolean;
 }
 
 export type PaymentProofType =

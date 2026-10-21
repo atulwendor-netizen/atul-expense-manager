@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Expense, Reimbursement, Trip } from '../types/index';
 import { SummaryCard } from '../components/SummaryCard';
-import { formatCurrency, formatDate } from '../utils/calculations';
+import { formatCurrency, formatDate, calculateTripFinancials } from '../utils/calculations';
 import {
   PieChart,
   Pie,
@@ -117,9 +117,35 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
     return scopedReimbursements.reduce((sum, r) => sum + (r.amount || 0), 0);
   }, [scopedReimbursements]);
 
-  const pendingDue = Math.max(0, totalSpend - totalReimbursed);
+  const { pendingDue, totalSurplus, hasDiscrepancy } = useMemo(() => {
+    if (selectedTrip !== 'all') {
+      const summary = calculateTripFinancials(selectedTrip, validExpenses, scopedReimbursements);
+      return {
+        pendingDue: summary.pendingDue,
+        totalSurplus: summary.surplus,
+        hasDiscrepancy: summary.isOverReimbursed,
+      };
+    }
+    let pSum = 0;
+    let sSum = 0;
+    trips.forEach((t) => {
+      const s = calculateTripFinancials(t.id, validExpenses, scopedReimbursements);
+      pSum += s.pendingDue;
+      sSum += s.surplus;
+    });
+    const unalloc = calculateTripFinancials(null, validExpenses, scopedReimbursements);
+    pSum += unalloc.pendingDue;
+    sSum += unalloc.surplus;
+    return {
+      pendingDue: pSum,
+      totalSurplus: sSum,
+      hasDiscrepancy: sSum > 0,
+    };
+  }, [selectedTrip, validExpenses, scopedReimbursements, trips]);
 
-  const settlementRate = totalSpend > 0 ? Math.min(100, Math.round((totalReimbursed / totalSpend) * 100)) : 0;
+  const settlementRate = totalSpend > 0
+    ? Math.round((totalReimbursed / totalSpend) * 100)
+    : (totalReimbursed > 0 ? 100 : 0);
 
   // Active spending days calculation
   const uniqueDates = useMemo(() => {
@@ -281,19 +307,19 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
         <SummaryCard
           title="Settled Reimbursement"
           value={formatCurrency(totalReimbursed)}
-          subtitle={`${settlementRate}% coverage of total spend`}
+          subtitle={totalSurplus > 0 ? `Includes ${formatCurrency(totalSurplus)} excess advance` : `${settlementRate}% coverage of total spend`}
           icon={TrendingUp}
           accentColor="emerald"
-          badge={{ text: 'Received', variant: 'success' }}
+          badge={totalSurplus > 0 ? { text: `${formatCurrency(totalSurplus)} Excess`, variant: 'warning' } : { text: 'Received', variant: 'success' }}
         />
 
         <SummaryCard
           title="Pending Reimbursement"
           value={formatCurrency(pendingDue)}
-          subtitle="Total Spend − Reimbursement"
+          subtitle={totalSurplus > 0 ? `Reconciled dues (Net: ${formatCurrency(totalSpend - totalReimbursed)})` : "Sum of pending trip claims"}
           icon={ArrowUpRight}
           accentColor="amber"
-          badge={{ text: pendingDue === 0 ? 'Settled' : 'Due Claim', variant: pendingDue === 0 ? 'success' : 'warning' }}
+          badge={{ text: hasDiscrepancy ? 'Discrepancy Flagged' : (pendingDue === 0 ? 'Settled' : 'Due Claim'), variant: pendingDue === 0 && !hasDiscrepancy ? 'success' : 'warning' }}
         />
 
         <SummaryCard
