@@ -135,6 +135,10 @@ export function App() {
     }
     setActiveTab(tab);
     setSearchQuery('');
+    // Ensure section navigation scrolls to the top of the selected section cleanly
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    }
   }, [isManager, addToast, setActiveTab, setSearchQuery]);
 
   const handleSignOut = useCallback(() => {

@@ -82,11 +82,11 @@ export const SignInModal: React.FC<SignInModalProps> = ({
       aria-modal="true"
       aria-labelledby="signin-modal-title"
       onClick={handleBackdropClick}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/75 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/75 backdrop-blur-md animate-in fade-in duration-200"
     >
-      <div className="relative w-full max-w-md rounded-3xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden my-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 p-6 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40">
+      <div className="relative w-full max-w-md max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col rounded-3xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden my-auto">
+        {/* Header - Pinned */}
+        <div className="flex items-center justify-between border-b border-slate-100 p-6 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 shrink-0 z-10">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white font-bold text-lg shadow-sm">
               A
@@ -114,8 +114,8 @@ export const SignInModal: React.FC<SignInModalProps> = ({
           )}
         </div>
 
-        {/* Body */}
-        <div className="p-6 space-y-4">
+        {/* Body - Independently Scrollable */}
+        <div className="p-6 space-y-4 flex-1 overflow-y-auto overscroll-contain focus:outline-none">
           {errorMessage && (
             <div className="flex items-start gap-2.5 rounded-2xl bg-rose-50 p-3 text-xs text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-900">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />

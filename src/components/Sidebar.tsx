@@ -15,6 +15,7 @@ import {
   Calculator,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { lockBodyScroll, unlockBodyScroll } from '../hooks/useModalA11y';
 
 interface SidebarProps {
   activeTab: string;
@@ -68,13 +69,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Lock body scroll on mobile when sidebar is open
+  // Lock body scroll on mobile when sidebar is open using safe reference-counted lock
   React.useEffect(() => {
     if (!isOpen || typeof document === 'undefined') return;
-    const original = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    lockBodyScroll();
     return () => {
-      document.body.style.overflow = original;
+      unlockBodyScroll();
     };
   }, [isOpen]);
 
@@ -89,12 +89,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         />
       )}
 
-      {/* Sidebar container */}
+      {/* Sidebar container: sticky on desktop so navigation stays accessible on long scrolling pages */}
       <aside
         role="navigation"
         aria-label="Main sidebar navigation"
         className={clsx(
-          'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200/80 bg-white shadow-sm transition-transform duration-300 ease-in-out dark:border-slate-800/80 dark:bg-slate-900 lg:static lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200/80 bg-white shadow-sm transition-transform duration-300 ease-in-out dark:border-slate-800/80 dark:bg-slate-900 lg:static lg:sticky lg:top-0 lg:h-screen lg:self-start lg:translate-x-0',
           isOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >

@@ -48,7 +48,7 @@ assert(pageContent.includes('DriveFileViewerModal'), 'Must mount DriveFileViewer
 assert(pageContent.includes('Import / View'), 'Must provide Import / View button');
 assert(pageContent.includes('Refresh Folder'), 'Must provide Refresh Folder button');
 assert(pageContent.includes('Private Google Drive folders require authorized Google credentials'), 'Must provide clear permission explanation for private folders');
-assert(pageContent.includes('handleSimulateNewUpload'), 'Must support simulating new upload for testing refresh');
+assert(!pageContent.includes('Simulate New Upload'), 'Simulate New Upload removed per UI clean-up specification');
 console.log('   - Link input, Import / View button, Refresh button & modal integration: ✅ PASSED');
 
 // 4. Test DriveFileViewerModal

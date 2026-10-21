@@ -7,6 +7,32 @@ interface UseModalA11yOptions {
   lockScroll?: boolean;
 }
 
+// Module-level reference-counted scroll-lock manager.
+// Safely coordinates nested, concurrent, and transitioning modals without permanently trapping overflow:hidden.
+let activeLockCount = 0;
+let previousBodyOverflow = '';
+
+export function lockBodyScroll(): void {
+  if (typeof document === 'undefined') return;
+  if (activeLockCount === 0) {
+    previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+  }
+  activeLockCount++;
+}
+
+export function unlockBodyScroll(): void {
+  if (typeof document === 'undefined') return;
+  activeLockCount = Math.max(0, activeLockCount - 1);
+  if (activeLockCount === 0) {
+    // Only restore previous overflow if it was not 'hidden', otherwise clear to ''
+    const originalOverflow =
+      previousBodyOverflow && previousBodyOverflow !== 'hidden' ? previousBodyOverflow : '';
+    document.body.style.overflow = originalOverflow;
+    previousBodyOverflow = '';
+  }
+}
+
 export function useModalA11y({
   isOpen,
   onClose,
@@ -30,15 +56,14 @@ export function useModalA11y({
     };
   }, [isOpen, closeOnEscape, onClose]);
 
-  // 2. Prevent background page scrolling when modal is open
+  // 2. Prevent background page scrolling with safe reference-counted lock
   useEffect(() => {
-    if (!isOpen || !lockScroll || typeof document === 'undefined') return;
+    if (!isOpen || !lockScroll) return;
 
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    lockBodyScroll();
 
     return () => {
-      document.body.style.overflow = originalOverflow;
+      unlockBodyScroll();
     };
   }, [isOpen, lockScroll]);
 

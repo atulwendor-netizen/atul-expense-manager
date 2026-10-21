@@ -74,12 +74,14 @@ export const ChatPage: React.FC<ChatPageProps> = ({
   const [newGroupTitle, setNewGroupTitle] = useState('');
   const [mobileShowActiveChat, setMobileShowActiveChat] = useState(Boolean(activeConversationId));
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-scroll to bottom of messages
+  // Auto-scroll messages container to bottom without scrolling window or parent ancestors
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
   }, [messages, activeConversationId]);
 
   // When activeConversationId changes, switch to chat view on mobile
@@ -389,7 +391,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
             )}
 
             {/* Messages Scroll Area */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 overscroll-contain">
               {messages.length === 0 ? (
                 <div className="py-16 text-center text-xs text-slate-400">
                   No messages yet. Send an update or request audit verification below.
@@ -567,7 +569,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({
                   );
                 })
               )}
-              <div ref={messagesEndRef} />
             </div>
 
             {/* Replying banner */}

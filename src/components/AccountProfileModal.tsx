@@ -44,11 +44,11 @@ export const AccountProfileModal: React.FC<AccountProfileModalProps> = ({
       aria-modal="true"
       aria-labelledby="profile-modal-title"
       onClick={handleBackdropClick}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150"
     >
-      <div className="relative w-full max-w-md rounded-3xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden my-auto">
-        {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40">
+      <div className="relative w-full max-w-md max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col rounded-3xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden my-auto">
+        {/* Modal Header - Pinned */}
+        <div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 shrink-0 z-10">
           <div className="flex items-center gap-3">
             <div
               className={`flex h-10 w-10 items-center justify-center rounded-2xl text-white shadow-sm ${
@@ -75,7 +75,8 @@ export const AccountProfileModal: React.FC<AccountProfileModalProps> = ({
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
+        {/* Modal Body - Scrollable */}
+        <div className="p-6 space-y-4 flex-1 overflow-y-auto overscroll-contain focus:outline-none">
           {/* User Profile Card */}
           <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-3">
             <div className="flex items-center justify-between">
@@ -194,8 +195,8 @@ export const AccountProfileModal: React.FC<AccountProfileModalProps> = ({
           </div>
         </div>
 
-        {/* Modal Footer */}
-        <div className="flex items-center justify-between border-t border-slate-100 p-4 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
+        {/* Modal Footer - Pinned */}
+        <div className="flex items-center justify-between border-t border-slate-100 p-4 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 shrink-0">
           <button
             type="button"
             onClick={handleSignOutClick}

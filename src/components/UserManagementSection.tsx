@@ -24,6 +24,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { saveSupabaseConfig, clearSupabaseConfig, isSupabaseConfigured } from '../services/supabase';
+import { lockBodyScroll, unlockBodyScroll } from '../hooks/useModalA11y';
 
 interface UserManagementSectionProps {
   currentUser: UserProfile;
@@ -75,11 +76,11 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
     };
     if (isInviteModalOpen || selectedUserForDetails || createdInviteModal) {
       window.addEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'hidden';
+      lockBodyScroll();
     }
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
+      unlockBodyScroll();
     };
   }, [isInviteModalOpen, selectedUserForDetails, createdInviteModal]);
 

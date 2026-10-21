@@ -53,11 +53,11 @@ export const ExpenseDetailsModal: React.FC<ExpenseDetailsModalProps> = ({
       aria-modal="true"
       aria-labelledby="expense-details-title"
       onClick={handleBackdropClick}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150"
     >
-      <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden my-auto">
-        {/* Header */}
-        <div className="flex items-start justify-between border-b border-slate-100 p-5 dark:border-slate-800">
+      <div className="relative w-full max-w-lg max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col rounded-2xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden my-auto">
+        {/* Header - Fixed & Accessible */}
+        <div className="flex items-start justify-between border-b border-slate-100 p-4 sm:p-5 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900 z-10">
           <div className="space-y-1 pr-4">
             <div className="flex items-center gap-2">
               {isIncomplete ? (
@@ -90,14 +90,14 @@ export const ExpenseDetailsModal: React.FC<ExpenseDetailsModalProps> = ({
           <button
             onClick={onClose}
             aria-label="Close dialog"
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Amount Banner */}
-        <div className="bg-slate-50 dark:bg-slate-800/50 px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        {/* Amount Banner - Pinned */}
+        <div className="bg-slate-50 dark:bg-slate-800/50 px-5 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
           <div>
             <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider dark:text-slate-400">
               Amount Spent
@@ -122,8 +122,8 @@ export const ExpenseDetailsModal: React.FC<ExpenseDetailsModalProps> = ({
           </div>
         </div>
 
-        {/* Content Details Grid */}
-        <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+        {/* Content Details Grid - Independently Scrollable */}
+        <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 overscroll-contain focus:outline-none">
           <div className="grid grid-cols-2 gap-4">
             <div className="flex items-start gap-2.5">
               <Calendar className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
@@ -247,8 +247,8 @@ export const ExpenseDetailsModal: React.FC<ExpenseDetailsModalProps> = ({
           )}
         </div>
 
-        {/* Footer Actions */}
-        <div className="flex items-center justify-between border-t border-slate-100 p-4 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
+        {/* Footer Actions - Pinned */}
+        <div className="flex items-center justify-between border-t border-slate-100 p-3.5 sm:p-4 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 shrink-0">
           <div>
             {!isManager ? (
               <button

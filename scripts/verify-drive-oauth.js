@@ -213,10 +213,10 @@ assert(
   '"Authorize Drive" button is protected and hidden from Audit role'
 );
 
-// "Simulate New Upload" button
+// "Simulate New Upload" button was removed per user UI update directive (UI clean-up requirement)
 assert(
-  paymentProofsPage.includes('Simulate New Upload') && paymentProofsPage.includes('{!isManager && ('),
-  '"Simulate New Upload" button is hidden from Audit role'
+  !paymentProofsPage.includes('Simulate New Upload'),
+  '"Simulate New Upload" button is removed per UI specification'
 );
 
 // DriveFileViewerModal

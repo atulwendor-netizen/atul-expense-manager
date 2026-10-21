@@ -150,11 +150,11 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
       aria-modal="true"
       aria-labelledby="expense-modal-title"
       onClick={handleBackdropClick}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
     >
-      <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 my-8">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
+      <div className="relative w-full max-w-lg max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col rounded-2xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden my-auto">
+        {/* Header - Pinned */}
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900 z-10">
           <div>
             <h3 id="expense-modal-title" className="text-base font-bold text-slate-900 dark:text-white">
               {expenseToEdit?.id ? 'Edit Expense Record' : 'Log New Expense'}
@@ -168,14 +168,15 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
           <button
             onClick={onClose}
             aria-label="Close dialog"
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        {/* Form Body - Independently Scrollable */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+          <div className="p-6 space-y-4 overflow-y-auto flex-1 overscroll-contain focus:outline-none">
           {/* Row: Date & Amount */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -368,9 +369,10 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
               </label>
             )}
           </div>
+          </div>
 
-          {/* Modal Actions */}
-          <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+          {/* Modal Actions - Pinned */}
+          <div className="flex items-center justify-between p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 shrink-0">
             {expenseToEdit?.id && onDelete ? (
               <button
                 type="button"
