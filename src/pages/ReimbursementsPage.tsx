@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Reimbursement, Trip, Expense } from '../types/index';
 import { SummaryCard } from '../components/SummaryCard';
 import { ConfirmationModal } from '../components/ConfirmationModal';
-import { formatCurrency, formatDate, calculateTripFinancials } from '../utils/calculations';
+import { formatCurrency, formatDate, reconcileTripsSettlement } from '../utils/calculations';
 import {
   DollarSign,
   CheckCircle2,
@@ -83,10 +83,15 @@ export const ReimbursementsPage: React.FC<ReimbursementsPageProps> = ({
     return scopedReimbursements.reduce((sum, r) => sum + (r.amount || 0), 0);
   }, [scopedReimbursements]);
 
-  // Per-Trip Breakdown calculations using canonical calculateTripFinancials
+  // Authoritative trip reconciliation
+  const reconciliation = useMemo(() => {
+    return reconcileTripsSettlement(trips, expenses, reimbursements);
+  }, [trips, expenses, reimbursements]);
+
+  // Per-Trip Breakdown calculations using reconcileTripsSettlement
   const tripBreakdowns = useMemo(() => {
-    return trips.map((trip) => {
-      const summary = calculateTripFinancials(trip.id, expenses, reimbursements);
+    return reconciliation.summaries.map((summary) => {
+      const trip = trips.find((t) => t.id === summary.tripId)!;
       return {
         trip,
         expenseCount: summary.validCount,
@@ -98,31 +103,24 @@ export const ReimbursementsPage: React.FC<ReimbursementsPageProps> = ({
         percentage: summary.settlementPct,
       };
     });
-  }, [trips, expenses, reimbursements]);
-
-  const unallocatedSummary = useMemo(() => {
-    return calculateTripFinancials(null, expenses, reimbursements);
-  }, [expenses, reimbursements]);
+  }, [reconciliation, trips]);
 
   // Dynamic scope-aware pending, surplus and settlement
   const { pendingReimbursement, totalSurplus, hasOverReimbursement } = useMemo(() => {
     if (selectedTripFilter !== 'all') {
-      const summary = calculateTripFinancials(selectedTripFilter, expenses, reimbursements);
+      const summary = reconciliation.summaries.find((s) => s.tripId === selectedTripFilter);
       return {
-        pendingReimbursement: summary.pendingDue,
-        totalSurplus: summary.surplus,
-        hasOverReimbursement: summary.isOverReimbursed,
+        pendingReimbursement: summary?.pendingDue || 0,
+        totalSurplus: summary?.surplus || 0,
+        hasOverReimbursement: summary?.isOverReimbursed || false,
       };
     }
-    // Reconciled sum of trip dues across all trips without silent cross-trip netting
-    const sumPending = tripBreakdowns.reduce((sum, tb) => sum + tb.pending, 0) + unallocatedSummary.pendingDue;
-    const sumSurplus = tripBreakdowns.reduce((sum, tb) => sum + tb.surplus, 0) + unallocatedSummary.surplus;
     return {
-      pendingReimbursement: sumPending,
-      totalSurplus: sumSurplus,
-      hasOverReimbursement: sumSurplus > 0 || tripBreakdowns.some((tb) => tb.isOverReimbursed),
+      pendingReimbursement: reconciliation.overall.pendingDue,
+      totalSurplus: reconciliation.overall.totalSurplus,
+      hasOverReimbursement: reconciliation.overall.hasDiscrepancy,
     };
-  }, [selectedTripFilter, tripBreakdowns, unallocatedSummary, expenses, reimbursements]);
+  }, [selectedTripFilter, reconciliation]);
 
   // Uncapped settlement percentage to expose over-reimbursement
   const settlementPercentage = totalExpense > 0

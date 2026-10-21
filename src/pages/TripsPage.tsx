@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Trip, Expense, Reimbursement } from '../types/index';
 import { SummaryCard } from '../components/SummaryCard';
 import { ConfirmationModal } from '../components/ConfirmationModal';
-import { formatCurrency, formatDate } from '../utils/calculations';
+import { formatCurrency, formatDate, reconcileTripsSettlement } from '../utils/calculations';
 import {
   Compass,
   Calendar,
@@ -56,115 +56,52 @@ export const TripsPage: React.FC<TripsPageProps> = ({
   const [tripToDelete, setTripToDelete] = useState<Trip | null>(null);
 
   // Per-trip computed metrics
+  const reconciliation = useMemo(() => {
+    return reconcileTripsSettlement(trips, expenses, reimbursements);
+  }, [trips, expenses, reimbursements]);
+
+  // Per-trip metrics from authoritative reconciliation
   const tripDetails = useMemo(() => {
-    return trips.map((trip) => {
-      // Valid & incomplete expenses for this trip
+    return reconciliation.summaries.map((summary) => {
+      const trip = trips.find((t) => t.id === summary.tripId)!;
       const tripExpenses = expenses.filter((e) => e.tripId === trip.id);
-      const validExpenses = tripExpenses.filter(
-        (e) => e.status === 'valid' && typeof e.amount === 'number' && e.amount !== null && !isNaN(e.amount)
-      );
-      const incompleteCount = tripExpenses.filter(
-        (e) => e.status === 'incomplete' || e.amount === null || isNaN(e.amount as number)
-      ).length;
-
-      const totalSpend = validExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-
-      // Reimbursements for this trip
-      const tripReimbursements = reimbursements.filter((r) => r.tripId === trip.id);
-      const totalReimbursed = tripReimbursements.reduce((sum, r) => sum + (r.amount || 0), 0);
-
-      const pendingDue = Math.max(0, totalSpend - totalReimbursed);
-      const surplus = Math.max(0, totalReimbursed - totalSpend);
-      const isOverReimbursed = totalReimbursed > totalSpend;
-
-      // Duration in days
-      let durationDays = 1;
-      if (trip.id === 'trip-mumbai-pune-2026') {
-        durationDays = 15;
-      } else if (trip.startDate && trip.endDate) {
-        const start = new Date(trip.startDate).getTime();
-        const end = new Date(trip.endDate).getTime();
-        if (!isNaN(start) && !isNaN(end)) {
-          durationDays = Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1);
-        }
-      }
-
-      // Canonical active spending days (unique valid expense dates)
-      const uniqueSpendingDates = new Set(
-        validExpenses.map((e) => e.date).filter((d): d is string => Boolean(d))
-      );
-      const activeSpendingDays = uniqueSpendingDates.size > 0 ? uniqueSpendingDates.size : durationDays;
-
-      // Canonical Daily Average = Total Spend / Active Spending Days
-      const dailyAverage = activeSpendingDays > 0 ? Math.round(totalSpend / activeSpendingDays) : 0;
-
-      // Uncapped settlement percentage so over-reimbursement is not hidden at 100%
-      const settlementPct = totalSpend > 0
-        ? Math.round((totalReimbursed / totalSpend) * 100)
-        : totalReimbursed > 0
-        ? 100
-        : 0;
 
       return {
         trip,
         expenseCount: tripExpenses.length,
-        validCount: validExpenses.length,
-        incompleteCount,
-        totalSpend,
-        totalReimbursed,
-        pendingDue,
-        surplus,
-        isOverReimbursed,
-        durationDays,
-        activeSpendingDays,
-        dailyAverage,
-        settlementPct,
+        validCount: summary.validCount,
+        incompleteCount: summary.incompleteCount,
+        totalSpend: summary.totalSpend,
+        totalReimbursed: summary.totalReimbursed,
+        pendingDue: summary.pendingDue,
+        surplus: summary.surplus,
+        isOverReimbursed: summary.isOverReimbursed,
+        durationDays: summary.durationDays,
+        activeSpendingDays: summary.activeSpendingDays,
+        dailyAverage: summary.dailyAverage,
+        settlementPct: summary.settlementPct,
       };
     });
-  }, [trips, expenses, reimbursements]);
+  }, [reconciliation, trips, expenses]);
 
-  // Overall calculations across all trips (reconciled sum of trip dues)
+  // Overall calculations across all trips (authoritative reconciliation)
   const overallStats = useMemo(() => {
     const totalTripsCount = trips.length;
     const activeTripsCount = trips.filter((t) => !t.isArchived).length;
 
-    // Check for any unallocated expenses / reimbursements
-    const tripIdSet = new Set(trips.map((t) => t.id));
-    const unallocatedExpenses = expenses.filter(
-      (e) => (!e.tripId || !tripIdSet.has(e.tripId)) && e.status === 'valid' && typeof e.amount === 'number' && e.amount !== null && !isNaN(e.amount)
-    );
-    const unallocatedSpend = unallocatedExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-
-    const unallocatedReimbursements = reimbursements.filter(
-      (r) => !r.tripId || !tripIdSet.has(r.tripId)
-    );
-    const unallocatedReimbursed = unallocatedReimbursements.reduce((sum, r) => sum + (r.amount || 0), 0);
-    const unallocatedPending = Math.max(0, unallocatedSpend - unallocatedReimbursed);
-    const unallocatedSurplus = Math.max(0, unallocatedReimbursed - unallocatedSpend);
-
-    const totalSpend = tripDetails.reduce((sum, td) => sum + td.totalSpend, 0) + unallocatedSpend;
-    const totalReimbursed = reimbursements.reduce((sum, r) => sum + (r.amount || 0), 0);
-
-    // Reconciled Total Pending = sum of trip pending claims + unallocated pending (no cross-trip netting)
-    const pendingDue = tripDetails.reduce((sum, td) => sum + td.pendingDue, 0) + unallocatedPending;
-    const totalSurplus = tripDetails.reduce((sum, td) => sum + td.surplus, 0) + unallocatedSurplus;
-
-    const netBalance = totalSpend - totalReimbursed;
-    const hasOverReimbursement = totalSurplus > 0 || tripDetails.some((td) => td.isOverReimbursed);
-
     return {
       totalTripsCount,
       activeTripsCount,
-      totalSpend,
-      totalReimbursed,
-      pendingDue,
-      totalSurplus,
-      netBalance,
-      hasOverReimbursement,
-      unallocatedSpend,
-      unallocatedReimbursed,
+      totalSpend: reconciliation.overall.totalSpend,
+      totalReimbursed: reconciliation.overall.totalReimbursement,
+      pendingDue: reconciliation.overall.pendingDue,
+      totalSurplus: reconciliation.overall.totalSurplus,
+      netBalance: reconciliation.overall.netBalance,
+      hasOverReimbursement: reconciliation.overall.hasDiscrepancy,
+      unallocatedSpend: reconciliation.overall.unallocatedSpend,
+      unallocatedReimbursed: reconciliation.overall.unallocatedReimbursed,
     };
-  }, [trips, tripDetails, expenses, reimbursements]);
+  }, [trips, reconciliation]);
 
   // Filtered trips
   const filteredTrips = useMemo(() => {

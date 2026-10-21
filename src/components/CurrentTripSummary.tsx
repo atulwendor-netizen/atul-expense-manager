@@ -171,6 +171,8 @@ export const CurrentTripSummary: React.FC<CurrentTripSummaryProps> = ({
               className={`mt-0.5 text-lg font-bold ${
                 metrics.totalOverReimbursement && metrics.totalOverReimbursement > 0 && !isAllTrips
                   ? 'text-purple-400'
+                  : metrics.pendingReimbursement === 0
+                  ? 'text-emerald-400'
                   : 'text-amber-400'
               }`}
             >

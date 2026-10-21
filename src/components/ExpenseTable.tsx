@@ -426,12 +426,16 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
                     </td>
 
                     {/* Actions */}
-                    <td className="py-3 pr-4 pl-3 text-right whitespace-nowrap">
+                    <td
+                      className="py-3 pr-4 pl-3 text-right whitespace-nowrap"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <div
                         className="flex items-center justify-end gap-1"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <button
+                          type="button"
                           onClick={() => onViewExpense(expense)}
                           title="View Details"
                           aria-label={`View details for ${expense.description || 'expense'}`}
@@ -441,6 +445,7 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
                         </button>
                         {onDiscussExpense && (
                           <button
+                            type="button"
                             onClick={() => onDiscussExpense(expense)}
                             title="Discuss Expense"
                             aria-label={`Discuss ${expense.description || 'expense'}`}
@@ -452,6 +457,7 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
                         {!isManager && (
                           <>
                             <button
+                              type="button"
                               onClick={() => onEditExpense(expense)}
                               title="Edit Expense"
                               aria-label={`Edit ${expense.description || 'expense'}`}
@@ -460,7 +466,11 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
                               <Edit2 className="h-3.5 w-3.5" />
                             </button>
                             <button
-                              onClick={() => onDeleteExpense(expense.id)}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteExpense(expense.id);
+                              }}
                               title="Delete Expense"
                               aria-label={`Delete ${expense.description || 'expense'}`}
                               className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-rose-600 dark:hover:bg-slate-800 dark:hover:text-rose-400 transition-colors"
@@ -571,7 +581,11 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
                       </button>
                       <span className="text-slate-300">|</span>
                       <button
-                        onClick={() => onDeleteExpense(expense.id)}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteExpense(expense.id);
+                        }}
                         className="text-xs font-semibold text-rose-600 dark:text-rose-400"
                       >
                         Delete

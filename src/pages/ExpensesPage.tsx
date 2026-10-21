@@ -195,10 +195,9 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
     if (expenseIdToDelete) {
       try {
         onDeleteExpense(expenseIdToDelete);
-      } catch {
-        // Error notification is already handled by onDeleteExpense in App.tsx
-      } finally {
         setExpenseIdToDelete(null);
+      } catch {
+        // Keep modal open if delete fails so user can retry or cancel
       }
     }
   };
@@ -358,7 +357,10 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
         onAddExpense={onAddExpense}
         onViewExpense={(expense) => setSelectedExpenseForDetails(expense)}
         onEditExpense={(expense) => onEditExpense(expense)}
-        onDeleteExpense={(id) => setExpenseIdToDelete(id)}
+        onDeleteExpense={(id) => {
+          setSelectedExpenseForDetails(null);
+          setExpenseIdToDelete(id);
+        }}
         onBulkDelete={(ids) => setBulkIdsToDelete(ids)}
         onClearFilters={handleClearFilters}
         onDiscussExpense={onDiscussExpense}
@@ -372,7 +374,10 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
         expense={selectedExpenseForDetails}
         trips={trips}
         onEdit={(expense) => onEditExpense(expense)}
-        onDelete={(id) => setExpenseIdToDelete(id)}
+        onDelete={(id) => {
+          setSelectedExpenseForDetails(null);
+          setExpenseIdToDelete(id);
+        }}
         onDiscuss={onDiscussExpense}
         isManager={isManager}
       />

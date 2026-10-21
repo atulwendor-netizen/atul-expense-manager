@@ -47,7 +47,7 @@ async function runTripReimbursementAuditSuite() {
           export { initialExpenses } from '../src/data/initialExpenses';
           export { initialTrips } from '../src/data/initialTrips';
           export { initialReimbursements } from '../src/data/initialReimbursements';
-          export { calculateTripFinancials, calculateDashboardMetrics, formatCurrency } from '../src/utils/calculations';
+          export { calculateTripFinancials, calculateDashboardMetrics, reconcileTripsSettlement, formatCurrency } from '../src/utils/calculations';
         `,
         resolveDir: __dirname,
         sourcefile: 'entry.js',
@@ -65,6 +65,7 @@ async function runTripReimbursementAuditSuite() {
       initialReimbursements,
       calculateTripFinancials,
       calculateDashboardMetrics,
+      reconcileTripsSettlement,
       formatCurrency,
     } = await import(`file://${tempBundlePath}`);
 
@@ -205,24 +206,43 @@ async function runTripReimbursementAuditSuite() {
       const tripBSummary = calculateTripFinancials('trip-b', expenses, reimbursements);
 
       assert(tripASummary.totalSpend === 16455, 'Trip A spend is ₹16,455');
-      assert(tripASummary.totalReimbursed === 16739, 'Trip A received ₹16,739');
-      assert(tripASummary.surplus === 284, 'Trip A has ₹284 surplus');
+      assert(tripASummary.totalReimbursed === 16739, 'Trip A raw direct received is ₹16,739');
+      assert(tripASummary.surplus === 284, 'Trip A has ₹284 direct surplus');
       assert(tripASummary.pendingDue === 0, 'Trip A pending claim is ₹0');
 
       assert(tripBSummary.totalSpend === 681, 'Trip B spend is ₹681');
-      assert(tripBSummary.totalReimbursed === 0, 'Trip B received ₹0');
-      assert(tripBSummary.pendingDue === 681, 'Trip B pending claim is strictly ₹681');
+      assert(tripBSummary.totalReimbursed === 0, 'Trip B raw direct received is ₹0');
+      assert(tripBSummary.pendingDue === 681, 'Trip B raw pending claim is ₹681');
 
-      // Now verify multi-trip dashboard metrics
+      // Now verify multi-trip authoritative reconciliation
+      const reconciliation = reconcileTripsSettlement(trips, expenses, reimbursements);
+      const recA = reconciliation.summaries.find((s) => s.tripId === 'trip-a');
+      const recB = reconciliation.summaries.find((s) => s.tripId === 'trip-b');
+
+      assert(recA.totalSpend === 16455, 'Reconciled Trip A spend is ₹16,455');
+      assert(recA.totalReimbursed === 16455, 'Reconciled Trip A received ₹16,455 (100%)');
+      assert(recA.pendingDue === 0, 'Reconciled Trip A pending is ₹0');
+      assert(recA.surplus === 0, 'Reconciled Trip A surplus is ₹0');
+      assert(recA.settlementPct === 100, 'Reconciled Trip A settlement is 100%');
+
+      assert(recB.totalSpend === 681, 'Reconciled Trip B spend is ₹681');
+      assert(recB.totalReimbursed === 284, 'Reconciled Trip B received ₹284 from excess allocation');
+      assert(recB.pendingDue === 397, 'Reconciled Trip B pending is ₹397 (681 - 284)');
+      assert(recB.surplus === 0, 'Reconciled Trip B surplus is ₹0');
+      assert(recB.settlementPct === 42, 'Reconciled Trip B settlement is 42%');
+
+      // Overall multi-trip dashboard metrics
       const dashboard = calculateDashboardMetrics(expenses, reimbursements, undefined, trips);
       assert(dashboard.totalExpense === 17136, 'Overall valid expenditure is ₹17,136');
       assert(dashboard.totalReimbursement === 16739, 'Overall reimbursement is ₹16,739');
-
-      // CRUCIAL BUSINESS RULE: Overall pending must NOT silently net Trip A's surplus against Trip B's claim!
-      assert(dashboard.pendingReimbursement === 681, 'Overall pending due is reconciled sum of claims: ₹681 (NOT netted to ₹397)');
-      assert(dashboard.totalOverReimbursement === 284, 'Total over-reimbursement surfaces ₹284 surplus advance');
+      assert(dashboard.pendingReimbursement === 397, 'Overall pending reimbursement is ₹397');
+      assert(dashboard.totalOverReimbursement === 0, 'Total over-reimbursement is ₹0');
       assert(dashboard.netBalance === 397, 'Net cross-trip balance is ₹397 (17136 - 16739)');
-      assert(dashboard.hasDiscrepancy === true, 'Discrepancy flag is TRUE');
+      assert(dashboard.hasDiscrepancy === false, 'Discrepancy flag is false');
+
+      // Reconciliation Invariant: sum of trip pending == overall pending
+      assert(recA.pendingDue + recB.pendingDue === dashboard.pendingReimbursement, 'Trip pending sum (0 + 397 = 397) matches overall pending');
+      assert(recA.totalReimbursed + recB.totalReimbursed === dashboard.totalReimbursement, 'Trip reimbursed sum (16455 + 284 = 16739) matches overall reimbursed');
     }
 
     // -------------------------------------------------------------------------
@@ -325,7 +345,59 @@ async function runTripReimbursementAuditSuite() {
       );
       assert(baselineMetrics.pendingReimbursement === 7136, 'Baseline overall pending is exactly ₹7,136');
 
-      // 9B: User Reported Over-Reimbursement State (₹16,739 paid to Trip 1)
+      // 9B: User Reported Exact Scenario (76 valid expenses = ₹17,028, Reimbursement = ₹17,028)
+      // When ₹17,028 is spent and ₹17,028 is reimbursed, pending MUST BE ₹0 (No Amount Mismatch!)
+      const current76Expenses = initialExpenses.filter((e) => e.id !== 'exp-071'); // exp-071 (108) deleted
+      const currentReimbursements = [
+        {
+          id: 'reimb-001',
+          amount: 17028,
+          date: '2026-10-15',
+          reference: 'REIMB-FULL-17028',
+          tripId: 'trip-mumbai-pune-2026',
+        },
+      ];
+
+      const currentMetrics = calculateDashboardMetrics(
+        current76Expenses,
+        currentReimbursements,
+        undefined,
+        initialTrips
+      );
+
+      const currentRec = reconcileTripsSettlement(initialTrips, current76Expenses, currentReimbursements);
+      const curTrip1 = currentRec.summaries.find((s) => s.tripId === 'trip-mumbai-pune-2026');
+      const curTrip2 = currentRec.summaries.find((s) => s.tripId === 'trip-local-work-2026');
+
+      assert(currentMetrics.totalExpense === 17028, 'Current Total Expense is exactly ₹17,028');
+      assert(currentMetrics.totalReimbursement === 17028, 'Current Total Reimbursement is exactly ₹17,028');
+      assert(currentMetrics.pendingReimbursement === 0, 'Current Pending Reimbursement is strictly ₹0 (NO MISMATCH)');
+      assert(currentMetrics.totalOverReimbursement === 0, 'Current Over-Reimbursement is strictly ₹0 (NO FALSE EXCESS)');
+      assert(currentMetrics.hasDiscrepancy === false, 'Current Discrepancy Flag is FALSE');
+      assert(currentMetrics.netBalance === 0, 'Current Net Balance is ₹0');
+
+      assert(curTrip1.totalSpend === 16455, 'Trip 1 spend is ₹16,455');
+      assert(curTrip1.totalReimbursed === 16455, 'Trip 1 attributed reimbursement is ₹16,455 (100%)');
+      assert(curTrip1.pendingDue === 0, 'Trip 1 pending is ₹0');
+      assert(curTrip1.surplus === 0, 'Trip 1 surplus is ₹0');
+      assert(curTrip1.settlementPct === 100, 'Trip 1 settlement is 100%');
+
+      assert(curTrip2.totalSpend === 573, 'Trip 2 spend is ₹573 (681 - 108)');
+      assert(curTrip2.totalReimbursed === 573, 'Trip 2 attributed reimbursement is ₹573 (100%)');
+      assert(curTrip2.pendingDue === 0, 'Trip 2 pending is ₹0');
+      assert(curTrip2.surplus === 0, 'Trip 2 surplus is ₹0');
+      assert(curTrip2.settlementPct === 100, 'Trip 2 settlement is 100%');
+
+      assert(
+        curTrip1.pendingDue + curTrip2.pendingDue === currentMetrics.pendingReimbursement,
+        'Trip pending sum (0 + 0 = 0) perfectly matches overall pending (0)'
+      );
+      assert(
+        curTrip1.totalReimbursed + curTrip2.totalReimbursed === currentMetrics.totalReimbursement,
+        'Trip reimbursed sum (16455 + 573 = 17028) perfectly matches overall reimbursement (17028)'
+      );
+
+      // 9C: Baseline 77 expenses (₹17,136 spend) with ₹16,739 Reimbursement
       const userScenarioReimbursements = [
         {
           id: 'reimb-001',
@@ -343,33 +415,33 @@ async function runTripReimbursementAuditSuite() {
         initialTrips
       );
 
-      const userTrip1 = calculateTripFinancials('trip-mumbai-pune-2026', initialExpenses, userScenarioReimbursements);
-      const userTrip2 = calculateTripFinancials('trip-local-work-2026', initialExpenses, userScenarioReimbursements);
+      const rec77 = reconcileTripsSettlement(initialTrips, initialExpenses, userScenarioReimbursements);
+      const userTrip1 = rec77.summaries.find((s) => s.tripId === 'trip-mumbai-pune-2026');
+      const userTrip2 = rec77.summaries.find((s) => s.tripId === 'trip-local-work-2026');
+
+      assert(userMetrics.totalExpense === 17136, 'User Scenario Total Expense is ₹17,136');
+      assert(userMetrics.totalReimbursement === 16739, 'User Scenario Total Reimbursement is ₹16,739');
+      assert(userMetrics.pendingReimbursement === 397, 'User Scenario Overall Pending is exactly ₹397 (17136 - 16739)');
+      assert(userMetrics.totalOverReimbursement === 0, 'User Scenario Over-Reimbursement is ₹0');
+      assert(userMetrics.hasDiscrepancy === false, 'User Scenario Discrepancy flag is false');
 
       assert(userTrip1.totalSpend === 16455, 'User Scenario Trip 1 spend = ₹16,455');
-      assert(userTrip1.totalReimbursed === 16739, 'User Scenario Trip 1 reimbursed = ₹16,739');
+      assert(userTrip1.totalReimbursed === 16455, 'User Scenario Trip 1 reimbursed = ₹16,455 (100%)');
       assert(userTrip1.pendingDue === 0, 'User Scenario Trip 1 pending = ₹0');
-      assert(userTrip1.surplus === 284, 'User Scenario Trip 1 surplus = ₹284');
-      assert(userTrip1.settlementPct === 102, 'User Scenario Trip 1 settlement progress = 102% (NOT capped)');
+      assert(userTrip1.settlementPct === 100, 'User Scenario Trip 1 settlement progress = 100%');
 
       assert(userTrip2.totalSpend === 681, 'User Scenario Trip 2 spend = ₹681');
-      assert(userTrip2.totalReimbursed === 0, 'User Scenario Trip 2 reimbursed = ₹0');
-      assert(userTrip2.pendingDue === 681, 'User Scenario Trip 2 pending = ₹681');
+      assert(userTrip2.totalReimbursed === 284, 'User Scenario Trip 2 reimbursed = ₹284');
+      assert(userTrip2.pendingDue === 397, 'User Scenario Trip 2 pending = ₹397');
+      assert(userTrip2.settlementPct === 42, 'User Scenario Trip 2 settlement = 42%');
 
-      // Reconciled Pending Claim across trips
       assert(
         userMetrics.pendingReimbursement === userTrip1.pendingDue + userTrip2.pendingDue,
-        `Overall pending due (${userMetrics.pendingReimbursement}) matches sum of trip claims (${userTrip1.pendingDue} + ${userTrip2.pendingDue} = 681)`
+        `Overall pending due (${userMetrics.pendingReimbursement}) matches sum of trip claims (${userTrip1.pendingDue} + ${userTrip2.pendingDue} = 397)`
       );
-      assert(userMetrics.pendingReimbursement === 681, 'Overall pending claim is strictly ₹681 (no silent netting)');
-      assert(userMetrics.totalOverReimbursement === 284, 'Overall over-reimbursement surfaces ₹284');
-      assert(userMetrics.netBalance === 397, 'Net cross-trip balance is ₹397 (681 - 284 = 397)');
-
-      // Mathematical Reconciliation Equation Verification:
-      // OverallPending - TotalOverReimbursement == NetBalance == TotalExpense - TotalReimbursement
       assert(
-        userMetrics.pendingReimbursement - userMetrics.totalOverReimbursement === userMetrics.netBalance,
-        `Reconciliation invariant holds: Pending (${userMetrics.pendingReimbursement}) - Surplus (${userMetrics.totalOverReimbursement}) = Net (${userMetrics.netBalance})`
+        userMetrics.totalReimbursement === userTrip1.totalReimbursed + userTrip2.totalReimbursed,
+        `Overall reimbursement (${userMetrics.totalReimbursement}) matches sum of trip reimbursements (${userTrip1.totalReimbursed} + ${userTrip2.totalReimbursed} = 16739)`
       );
     }
 

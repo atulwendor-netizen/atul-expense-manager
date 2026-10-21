@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Expense, Reimbursement, Trip } from '../types/index';
 import { SummaryCard } from '../components/SummaryCard';
-import { formatCurrency, formatDate, calculateTripFinancials } from '../utils/calculations';
+import { formatCurrency, formatDate, reconcileTripsSettlement } from '../utils/calculations';
 import {
   PieChart,
   Pie,
@@ -117,31 +117,25 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
     return scopedReimbursements.reduce((sum, r) => sum + (r.amount || 0), 0);
   }, [scopedReimbursements]);
 
+  const reconciliation = useMemo(() => {
+    return reconcileTripsSettlement(trips, validExpenses, scopedReimbursements);
+  }, [trips, validExpenses, scopedReimbursements]);
+
   const { pendingDue, totalSurplus, hasDiscrepancy } = useMemo(() => {
     if (selectedTrip !== 'all') {
-      const summary = calculateTripFinancials(selectedTrip, validExpenses, scopedReimbursements);
+      const summary = reconciliation.summaries.find((s) => s.tripId === selectedTrip);
       return {
-        pendingDue: summary.pendingDue,
-        totalSurplus: summary.surplus,
-        hasDiscrepancy: summary.isOverReimbursed,
+        pendingDue: summary?.pendingDue || 0,
+        totalSurplus: summary?.surplus || 0,
+        hasDiscrepancy: summary?.isOverReimbursed || false,
       };
     }
-    let pSum = 0;
-    let sSum = 0;
-    trips.forEach((t) => {
-      const s = calculateTripFinancials(t.id, validExpenses, scopedReimbursements);
-      pSum += s.pendingDue;
-      sSum += s.surplus;
-    });
-    const unalloc = calculateTripFinancials(null, validExpenses, scopedReimbursements);
-    pSum += unalloc.pendingDue;
-    sSum += unalloc.surplus;
     return {
-      pendingDue: pSum,
-      totalSurplus: sSum,
-      hasDiscrepancy: sSum > 0,
+      pendingDue: reconciliation.overall.pendingDue,
+      totalSurplus: reconciliation.overall.totalSurplus,
+      hasDiscrepancy: reconciliation.overall.hasDiscrepancy,
     };
-  }, [selectedTrip, validExpenses, scopedReimbursements, trips]);
+  }, [selectedTrip, reconciliation]);
 
   const settlementRate = totalSpend > 0
     ? Math.round((totalReimbursed / totalSpend) * 100)

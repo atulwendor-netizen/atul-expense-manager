@@ -41,14 +41,14 @@ export const ReimbursementModal: React.FC<ReimbursementModalProps> = ({
         setReference(reimbursementToEdit.reference || `REIMB-${Date.now().toString().slice(-4)}`);
         setNotes(reimbursementToEdit.notes || '');
         setTripId(
-          reimbursementToEdit.tripId || (activeTripId !== 'all' ? activeTripId : trips[0]?.id || '')
+          reimbursementToEdit.tripId || (activeTripId !== 'all' ? activeTripId : '')
         );
       } else {
         setDate(new Date().toISOString().split('T')[0]);
         setAmount('');
         setReference(`REIMB-${Date.now().toString().slice(-4)}`);
         setNotes('');
-        setTripId(activeTripId !== 'all' ? activeTripId : trips[0]?.id || '');
+        setTripId(activeTripId !== 'all' ? activeTripId : '');
       }
       setErrors({});
     }
