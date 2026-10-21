@@ -64,6 +64,7 @@ export function App() {
     updateExpense,
     deleteExpense,
     deleteMultipleExpenses,
+    verifyExpenseReceipt,
     addReimbursement,
     updateReimbursement,
     deleteReimbursement,
@@ -538,16 +539,18 @@ export function App() {
             />
           )}
 
-          {/* Tab 2: Expenses Management */}
-          {activeTab === 'expenses' && (
+          {/* Tab 2: Expenses Management & Receipt Verification */}
+          {(activeTab === 'expenses' || activeTab === 'receipt-verification') && (
             <ExpensesPage
               expenses={tripFilteredExpenses}
               trips={trips}
+              initialSubView={activeTab === 'receipt-verification' ? 'verification' : 'all'}
               onAddExpense={handleOpenAddExpense}
               onEditExpense={handleEditExpense}
               onDeleteExpense={handleDeleteExpense}
               onBulkDeleteExpenses={handleBulkDeleteExpenses}
               onDiscussExpense={openExpenseDiscussion}
+              onVerifyExpense={verifyExpenseReceipt}
               onNotify={addToast}
               onNavigateTab={handleSelectTab}
               isManager={isManager}

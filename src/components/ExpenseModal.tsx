@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Expense, Trip } from '../types/index';
-import { X, Upload, FileText, Trash2 } from 'lucide-react';
+import { Expense, Trip, ReceiptMetadata } from '../types/index';
+import { X, Upload, FileText, Trash2, CheckCircle2 } from 'lucide-react';
 import { useModalA11y } from '../hooks/useModalA11y';
+import { receiptStorage } from '../services/receiptStorage';
 
 interface ExpenseModalProps {
   isOpen: boolean;
@@ -47,6 +48,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   const [tripId, setTripId] = useState<string>('');
   const [receipt, setReceipt] = useState<string | null>(null);
   const [receiptName, setReceiptName] = useState<string | null>(null);
+  const [receiptMetadata, setReceiptMetadata] = useState<ReceiptMetadata | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -62,6 +64,18 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
       setTripId(expenseToEdit.tripId || (trips[0]?.id || ''));
       setReceipt(expenseToEdit.receipt || null);
       setReceiptName(expenseToEdit.receiptName || null);
+      setReceiptMetadata(
+        expenseToEdit.receiptMetadata ||
+          (expenseToEdit.receipt
+            ? {
+                fileName: expenseToEdit.receiptName || 'Receipt Document',
+                fileType: 'application/octet-stream',
+                fileSize: 0,
+                uploadedAt: expenseToEdit.createdAt || new Date().toISOString(),
+                verificationStatus: expenseToEdit.verificationStatus || 'receipt_attached',
+              }
+            : null)
+      );
     } else {
       // Default new expense
       const today = new Date().toISOString().split('T')[0];
@@ -75,27 +89,43 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
       setTripId(trips[0]?.id || '');
       setReceipt(null);
       setReceiptName(null);
+      setReceiptMetadata(null);
     }
     setErrors({});
   }, [expenseToEdit, isOpen, trips]);
 
   if (!isOpen) return null;
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      setErrors((prev) => ({ ...prev, receipt: 'File size must be under 5MB' }));
+    const validation = receiptStorage.validateFile(file);
+    if (!validation.valid) {
+      setErrors((prev) => ({ ...prev, receipt: validation.error || 'Invalid file format or size.' }));
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setReceipt(reader.result as string);
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.receipt;
+      return next;
+    });
+
+    try {
+      const dataUrl = await receiptStorage.readFileAsDataUrl(file);
+      setReceipt(dataUrl);
       setReceiptName(file.name);
-    };
-    reader.readAsDataURL(file);
+      setReceiptMetadata({
+        fileName: file.name,
+        fileType: file.type || 'application/octet-stream',
+        fileSize: file.size,
+        uploadedAt: new Date().toISOString(),
+        verificationStatus: 'receipt_attached',
+      });
+    } catch {
+      setErrors((prev) => ({ ...prev, receipt: 'Failed to read receipt file. Please try again.' }));
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -134,6 +164,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
         tripId: tripId || null,
         receipt,
         receiptName,
+        receiptMetadata,
         status: 'valid',
       });
       onClose();
@@ -332,21 +363,46 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
           {/* Receipt attachment */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Receipt Attachment (JPG, PNG, PDF)
+              Receipt Attachment (PNG, JPG, JPEG, WebP, PDF up to 10MB)
             </label>
             {receipt ? (
               <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
-                <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 truncate pr-2">
-                  <FileText className="h-4 w-4 text-blue-600 shrink-0" />
-                  <span className="truncate font-medium">{receiptName || 'Receipt file attached'}</span>
+                <div className="flex items-center gap-2.5 text-xs text-slate-700 dark:text-slate-300 truncate pr-2 min-w-0">
+                  <div className="rounded-lg bg-blue-100 p-2 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400 shrink-0">
+                    <FileText className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold text-slate-800 dark:text-slate-200">
+                      {receiptName || receiptMetadata?.fileName || 'Receipt document attached'}
+                    </p>
+                    <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                      {receiptMetadata?.fileSize ? (
+                        <span>{(receiptMetadata.fileSize / 1024).toFixed(0)} KB</span>
+                      ) : null}
+                      {receiptMetadata?.fileType ? (
+                        <span className="uppercase font-mono bg-slate-200/70 dark:bg-slate-700 px-1.5 py-0.2 rounded text-[9px]">
+                          {receiptMetadata.fileType.split('/')[1] || receiptMetadata.fileType}
+                        </span>
+                      ) : null}
+                      {receiptMetadata?.verificationStatus === 'verified' && (
+                        <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400 font-semibold">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Verified
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <button
                   type="button"
+                  title="Remove Receipt"
+                  aria-label="Remove receipt attachment"
                   onClick={() => {
                     setReceipt(null);
                     setReceiptName(null);
+                    setReceiptMetadata(null);
                   }}
-                  className="rounded-lg p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
+                  className="rounded-lg p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -354,19 +410,22 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
             ) : (
               <label className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 p-4 hover:border-blue-500 dark:border-slate-700 dark:hover:border-blue-400 cursor-pointer transition-colors bg-slate-50/50 dark:bg-slate-800/40">
                 <Upload className="h-5 w-5 text-slate-400 mb-1" />
-                <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                  Click to upload receipt
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Click to upload payment receipt
                 </span>
-                <span className="text-[10px] text-slate-400">
-                  PNG, JPG or PDF up to 5MB
+                <span className="text-[10px] text-slate-400 mt-0.5">
+                  PNG, JPG, WebP, or PDF (up to 10MB)
                 </span>
                 <input
                   type="file"
-                  accept="image/png,image/jpeg,image/jpg,application/pdf"
+                  accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
                   onChange={handleFileUpload}
                   className="hidden"
                 />
               </label>
+            )}
+            {errors.receipt && (
+              <p className="mt-1 text-[11px] text-rose-500 font-medium">{errors.receipt}</p>
             )}
           </div>
           </div>

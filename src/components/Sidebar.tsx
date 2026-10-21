@@ -36,6 +36,7 @@ interface NavItemDef {
 const navItems: NavItemDef[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'expenses', label: 'Expenses', icon: Receipt },
+  { id: 'receipt-verification', label: 'Receipt Verification', icon: ShieldCheck },
   { id: 'trips', label: 'Trips', icon: Compass },
   { id: 'reimbursements', label: 'Reimbursements', icon: DollarSign },
   { id: 'calculator', label: 'Calculator', icon: Calculator },

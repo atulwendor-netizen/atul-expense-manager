@@ -16,6 +16,7 @@ import {
   PaymentProofStatus,
   GoogleDriveConfig,
   DriveFolderFile,
+  ReceiptVerificationStatus,
 } from '../types/index';
 import { backend } from '../services/backendService';
 import { initialGoogleDriveConfig } from '../data/initialPaymentProofs';
@@ -67,6 +68,7 @@ export function useExpenseData() {
       const validTabs = [
         'dashboard',
         'expenses',
+        'receipt-verification',
         'trips',
         'reimbursements',
         'calculator',
@@ -106,6 +108,7 @@ export function useExpenseData() {
       const validTabs = [
         'dashboard',
         'expenses',
+        'receipt-verification',
         'trips',
         'reimbursements',
         'calculator',
@@ -486,6 +489,16 @@ export function useExpenseData() {
     refreshState();
   }, [refreshState]);
 
+  const verifyExpenseReceipt = useCallback(
+    (expenseId: string, status: ReceiptVerificationStatus, notes?: string) => {
+      const updated = backend.verifyExpenseReceipt(expenseId, status, notes);
+      setExpenses((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+      refreshState();
+      return updated;
+    },
+    [refreshState]
+  );
+
   const addReimbursement = useCallback((data: Omit<Reimbursement, 'id'>) => {
     const newReimb = backend.addReimbursement(data);
     setReimbursements((prev) => [newReimb, ...prev.filter((r) => r.id !== newReimb.id)]);
@@ -692,6 +705,7 @@ export function useExpenseData() {
     updateExpense,
     deleteExpense,
     deleteMultipleExpenses,
+    verifyExpenseReceipt,
     addReimbursement,
     updateReimbursement,
     deleteReimbursement,

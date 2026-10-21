@@ -16,7 +16,9 @@ import {
   PaymentProofStatus,
   GoogleDriveConfig,
   DriveFolderFile,
+  ReceiptVerificationStatus,
 } from '../types/index';
+import { receiptStorage } from './receiptStorage';
 import { initialExpenses } from '../data/initialExpenses';
 import { initialReimbursements } from '../data/initialReimbursements';
 import { initialTrips } from '../data/initialTrips';
@@ -1683,6 +1685,14 @@ class BackendService {
       id: data.id || `exp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       ownerId: this.currentUser.id,
       workspaceId: this.currentUser.workspaceId,
+      receipt: data.receipt || null,
+      receiptName: data.receiptName || (data.receiptMetadata ? data.receiptMetadata.fileName : null),
+      receiptMetadata: data.receiptMetadata || null,
+      verificationStatus: data.verificationStatus || (data.receipt ? 'receipt_attached' : 'receipt_missing'),
+      verifiedAt: data.verifiedAt || null,
+      verifiedBy: data.verifiedBy || null,
+      verifiedByName: data.verifiedByName || null,
+      verificationNotes: data.verificationNotes || null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       status:
@@ -1764,10 +1774,33 @@ class BackendService {
         ? 'valid'
         : 'incomplete';
 
+    // Preserve existing receipts when editing other expense fields unless explicitly modified
+    const hasReceiptField = 'receipt' in updatedExpense;
+    const finalReceipt = hasReceiptField ? updatedExpense.receipt : oldExpense.receipt;
+    const finalReceiptName = hasReceiptField ? updatedExpense.receiptName : oldExpense.receiptName;
+    const finalReceiptMetadata = hasReceiptField
+      ? (updatedExpense.receiptMetadata ?? (finalReceipt ? oldExpense.receiptMetadata : null))
+      : oldExpense.receiptMetadata;
+
+    // Determine verification status
+    let finalVerificationStatus = updatedExpense.verificationStatus || oldExpense.verificationStatus;
+    if (finalReceipt) {
+      if (!finalVerificationStatus || finalVerificationStatus === 'receipt_missing') {
+        finalVerificationStatus = 'receipt_attached';
+      }
+    } else {
+      finalVerificationStatus = 'receipt_missing';
+    }
+
     expenses[index] = {
+      ...oldExpense,
       ...updatedExpense,
-      ownerId: this.currentUser.id,
-      workspaceId: this.currentUser.workspaceId,
+      receipt: finalReceipt,
+      receiptName: finalReceiptName,
+      receiptMetadata: finalReceiptMetadata,
+      verificationStatus: finalVerificationStatus,
+      ownerId: oldExpense.ownerId || this.currentUser.id,
+      workspaceId: oldExpense.workspaceId || this.currentUser.workspaceId,
       status,
       updatedAt: new Date().toISOString(),
     };
@@ -1783,6 +1816,62 @@ class BackendService {
       previousValue: oldDesc,
       newValue: newDesc,
     });
+  }
+
+  verifyExpenseReceipt(
+    expenseId: string,
+    status: ReceiptVerificationStatus,
+    notes?: string
+  ): Expense {
+    this.enforceActiveMember();
+    this.checkFailureSimulation('Verify Receipt');
+    if (!expenseId || typeof expenseId !== 'string') {
+      throw new Error('Expense ID is required for verification.');
+    }
+    const cleanId = expenseId.trim();
+    const expenses = this.getExpenses();
+    const index = expenses.findIndex((e) => e.id === cleanId);
+    if (index === -1) {
+      throw new Error(`Expense record "${cleanId}" not found.`);
+    }
+
+    const oldExpense = expenses[index];
+    const now = new Date().toISOString();
+    const isVerified = status === 'verified';
+
+    const updated: Expense = {
+      ...oldExpense,
+      verificationStatus: status,
+      verifiedAt: isVerified ? now : (status === 'verification_pending' ? null : oldExpense.verifiedAt),
+      verifiedBy: isVerified ? this.currentUser.id : (status === 'verification_pending' ? null : oldExpense.verifiedBy),
+      verifiedByName: isVerified ? this.currentUser.name : (status === 'verification_pending' ? null : oldExpense.verifiedByName),
+      verificationNotes: notes !== undefined ? notes : oldExpense.verificationNotes,
+      updatedAt: now,
+    };
+
+    if (updated.receiptMetadata) {
+      updated.receiptMetadata = {
+        ...updated.receiptMetadata,
+        verificationStatus: status,
+        verifiedAt: updated.verifiedAt,
+        verifiedBy: updated.verifiedBy,
+        verifiedByName: updated.verifiedByName,
+        verificationNotes: updated.verificationNotes,
+      };
+    }
+
+    expenses[index] = updated;
+    this.saveExpenses(expenses);
+
+    this.recordAuditLog({
+      action: isVerified ? 'Verified Expense Receipt' : `Updated Receipt Verification (${status})`,
+      recordType: 'expense',
+      recordId: cleanId,
+      previousValue: oldExpense.verificationStatus || 'receipt_missing',
+      newValue: `${status}${notes ? ` - ${notes}` : ''}`,
+    });
+
+    return updated;
   }
 
   deleteExpense(id: string): void {
@@ -1834,6 +1923,7 @@ class BackendService {
 
     const filtered = expenses.filter((e) => (e.id || '').trim() !== cleanId);
     this.saveExpenses(filtered);
+    receiptStorage.deleteReceipt(cleanId, this.currentUser.workspaceId).catch(() => {});
 
     this.recordAuditLog({
       action: 'Deleted Expense',
@@ -1902,6 +1992,7 @@ class BackendService {
 
     const remaining = expenses.filter((e) => !idSet.has((e.id || '').trim()));
     this.saveExpenses(remaining);
+    cleanIds.forEach((id) => receiptStorage.deleteReceipt(id, this.currentUser.workspaceId).catch(() => {}));
 
     const totalDeletedAmt = deletedItems.reduce((sum, e) => sum + (e.amount || 0), 0);
     this.recordAuditLog({

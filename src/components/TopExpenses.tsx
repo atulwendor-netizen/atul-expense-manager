@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Expense } from '../types/index';
 import { formatCurrency, formatDate } from '../utils/calculations';
-import { Trophy } from 'lucide-react';
+import { Trophy, CheckCircle2, FileText, FileQuestion } from 'lucide-react';
 
 interface TopExpensesProps {
   expenses: Expense[];
@@ -74,9 +74,42 @@ export const TopExpenses: React.FC<TopExpensesProps> = ({ expenses, onSelectExpe
                     <p className="truncate font-medium text-slate-900 group-hover:text-blue-600 dark:text-white dark:group-hover:text-blue-400">
                       {item.description}
                     </p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                      {formatDate(item.date)} • {item.category}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                      <span>{formatDate(item.date)} • {item.category}</span>
+                      <span>•</span>
+                      {(() => {
+                        const receiptStatus = item.verificationStatus || (item.receipt ? 'receipt_attached' : 'receipt_missing');
+                        if (receiptStatus === 'verified') {
+                          return (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                              <CheckCircle2 className="h-2.5 w-2.5" />
+                              Verified
+                            </span>
+                          );
+                        }
+                        if (receiptStatus === 'verification_pending') {
+                          return (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                              Pending Review
+                            </span>
+                          );
+                        }
+                        if (receiptStatus === 'receipt_attached' || item.receipt) {
+                          return (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
+                              <FileText className="h-2.5 w-2.5" />
+                              Receipt
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-400">
+                            <FileQuestion className="h-2.5 w-2.5" />
+                            No Receipt
+                          </span>
+                        );
+                      })()}
+                    </div>
                   </div>
                 </div>
 

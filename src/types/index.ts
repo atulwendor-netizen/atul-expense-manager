@@ -15,6 +15,28 @@ export type PaymentMethod =
 
 export type ExpenseStatus = 'valid' | 'incomplete';
 
+export type ReceiptVerificationStatus =
+  | 'verified'
+  | 'verification_pending'
+  | 'receipt_attached'
+  | 'receipt_missing'
+  | 'file_unavailable';
+
+export interface ReceiptMetadata {
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  uploadedAt: string;
+  storageRef?: string;
+  driveFileId?: string | null;
+  driveLink?: string | null;
+  verificationStatus?: ReceiptVerificationStatus;
+  verifiedAt?: string | null;
+  verifiedBy?: string | null;
+  verifiedByName?: string | null;
+  verificationNotes?: string | null;
+}
+
 export interface Expense {
   id: string;
   ownerId?: string;           // Authenticated user UID who owns this expense
@@ -26,8 +48,14 @@ export interface Expense {
   paymentMethod: string;
   location: string;
   notes: string;
-  receipt: string | null;     // Data URL (image/pdf base64) or null
+  receipt: string | null;     // Data URL (image/pdf base64) or persistent storage reference
   receiptName?: string | null;
+  receiptMetadata?: ReceiptMetadata | null;
+  verificationStatus?: ReceiptVerificationStatus; // 'verified' | 'verification_pending' | 'receipt_attached' | 'receipt_missing' | 'file_unavailable'
+  verifiedAt?: string | null;
+  verifiedBy?: string | null;
+  verifiedByName?: string | null;
+  verificationNotes?: string | null;
   tripId: string | null;      // Link to Trip
   status: ExpenseStatus;      // 'valid' or 'incomplete'
   createdAt?: string;

@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { Expense, Trip } from '../types/index';
+import { Expense, Trip, ReceiptVerificationStatus } from '../types/index';
 import { FilterBar, FilterState } from '../components/FilterBar';
 import { ExpenseTable } from '../components/ExpenseTable';
 import { ExpenseDetailsModal } from '../components/ExpenseDetailsModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { SummaryCard } from '../components/SummaryCard';
+import { ReceiptVerificationSection } from '../components/ReceiptVerificationSection';
+import { ReceiptVerificationModal } from '../components/ReceiptVerificationModal';
 import { exportExpensesToCSV, exportExpensesToExcel } from '../utils/export';
 import { formatCurrency } from '../utils/calculations';
 import {
@@ -19,16 +21,19 @@ import {
   ChevronDown,
   FileCheck,
   Calculator,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface ExpensesPageProps {
   expenses: Expense[];
   trips: Trip[];
+  initialSubView?: 'all' | 'verification';
   onAddExpense: () => void;
   onEditExpense: (expense: Expense) => void;
   onDeleteExpense: (id: string) => void;
   onBulkDeleteExpenses: (ids: string[]) => void;
   onDiscussExpense?: (expense: Expense) => void;
+  onVerifyExpense?: (expenseId: string, status: ReceiptVerificationStatus, notes?: string) => void;
   onNotify: (type: 'success' | 'warning' | 'info' | 'error', text: string) => void;
   onNavigateTab?: (tab: string) => void;
   isManager?: boolean;
@@ -48,22 +53,41 @@ const initialFilterState: FilterState = {
 export const ExpensesPage: React.FC<ExpensesPageProps> = ({
   expenses,
   trips,
+  initialSubView = 'all',
   onAddExpense,
   onEditExpense,
   onDeleteExpense,
   onBulkDeleteExpenses,
   onDiscussExpense,
+  onVerifyExpense,
   onNotify,
   onNavigateTab,
   isManager = false,
 }) => {
+  const [activeSubView, setActiveSubView] = useState<'all' | 'verification'>(initialSubView);
+
+  React.useEffect(() => {
+    if (initialSubView) {
+      setActiveSubView(initialSubView);
+    }
+  }, [initialSubView]);
   const [filters, setFilters] = useState<FilterState>(initialFilterState);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
 
   // Modals state
   const [selectedExpenseForDetails, setSelectedExpenseForDetails] = useState<Expense | null>(null);
+  const [selectedExpenseForVerification, setSelectedExpenseForVerification] = useState<Expense | null>(null);
+  const [verificationExpensesList, setVerificationExpensesList] = useState<Expense[]>([]);
   const [expenseIdToDelete, setExpenseIdToDelete] = useState<string | null>(null);
   const [bulkIdsToDelete, setBulkIdsToDelete] = useState<string[] | null>(null);
+
+  // Pending verification count (unreviewed or pending review)
+  const pendingVerificationCount = useMemo(() => {
+    return expenses.filter((e) => {
+      const s = e.verificationStatus || (e.receipt ? 'receipt_attached' : 'receipt_missing');
+      return s === 'verification_pending' || s === 'receipt_attached';
+    }).length;
+  }, [expenses]);
 
   // Extract unique filter options from data
   const categories = useMemo(() => {
@@ -298,74 +322,139 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
         </div>
       </div>
 
-      {/* Dynamic Summary Cards for Filtered Set */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <SummaryCard
-          title="Total Expenses"
-          value={formatCurrency(pageMetrics.totalAmount)}
-          subtitle="Sum of valid records"
-          icon={Wallet}
-          accentColor="brand"
-        />
-        <SummaryCard
-          title="Valid Transactions"
-          value={pageMetrics.validCount}
-          subtitle="Fully logged records"
-          icon={CheckCircle2}
-          accentColor="emerald"
-        />
-        <SummaryCard
-          title="Incomplete Records"
-          value={pageMetrics.incompleteCount}
-          subtitle={pageMetrics.incompleteCount > 0 ? "Requires amount" : "All records complete"}
-          icon={AlertTriangle}
-          accentColor="amber"
-          badge={
-            pageMetrics.incompleteCount > 0
-              ? { text: 'Attention', variant: 'warning' }
-              : { text: 'Clean', variant: 'success' }
-          }
-        />
-        <SummaryCard
-          title="Average Expense"
-          value={formatCurrency(pageMetrics.avgExpense)}
-          subtitle="Per item average"
-          icon={TrendingDown}
-          accentColor="violet"
-        />
+      {/* Sub-view Navigation Tabs */}
+      <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveSubView('all')}
+            className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl transition-all ${
+              activeSubView === 'all'
+                ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <span>All Expenses</span>
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                activeSubView === 'all'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+              }`}
+            >
+              {expenses.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubView('verification')}
+            className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl transition-all ${
+              activeSubView === 'verification'
+                ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            <span>Receipt Verification</span>
+            {pendingVerificationCount > 0 && (
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  activeSubView === 'verification'
+                    ? 'bg-amber-400 text-slate-900'
+                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                }`}
+              >
+                {pendingVerificationCount} pending
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
-      {/* Filter Toolbar */}
-      <FilterBar
-        filters={filters}
-        onFilterChange={handleFilterChange}
-        onClearFilters={handleClearFilters}
-        categories={categories}
-        locations={locations}
-        paymentMethods={paymentMethods}
-        trips={trips}
-        filteredCount={filteredExpenses.length}
-        totalCount={expenses.length}
-      />
+      {activeSubView === 'all' ? (
+        <>
+          {/* Dynamic Summary Cards for Filtered Set */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <SummaryCard
+              title="Total Expenses"
+              value={formatCurrency(pageMetrics.totalAmount)}
+              subtitle="Sum of valid records"
+              icon={Wallet}
+              accentColor="brand"
+            />
+            <SummaryCard
+              title="Valid Transactions"
+              value={pageMetrics.validCount}
+              subtitle="Fully logged records"
+              icon={CheckCircle2}
+              accentColor="emerald"
+            />
+            <SummaryCard
+              title="Incomplete Records"
+              value={pageMetrics.incompleteCount}
+              subtitle={pageMetrics.incompleteCount > 0 ? 'Requires amount' : 'All records complete'}
+              icon={AlertTriangle}
+              accentColor="amber"
+              badge={
+                pageMetrics.incompleteCount > 0
+                  ? { text: 'Attention', variant: 'warning' }
+                  : { text: 'Clean', variant: 'success' }
+              }
+            />
+            <SummaryCard
+              title="Average Expense"
+              value={formatCurrency(pageMetrics.avgExpense)}
+              subtitle="Per item average"
+              icon={TrendingDown}
+              accentColor="violet"
+            />
+          </div>
 
-      {/* Expense Table with desktop & mobile layouts */}
-      <ExpenseTable
-        filterKey={JSON.stringify(filters)}
-        expenses={filteredExpenses}
-        trips={trips}
-        totalExpensesCount={expenses.length}
-        onAddExpense={onAddExpense}
-        onViewExpense={(expense) => setSelectedExpenseForDetails(expense)}
-        onEditExpense={(expense) => onEditExpense(expense)}
-        onDeleteExpense={(id) => {
-          setSelectedExpenseForDetails(null);
-          setExpenseIdToDelete(id);
-        }}
-        onBulkDelete={(ids) => setBulkIdsToDelete(ids)}
-        onClearFilters={handleClearFilters}
-        onDiscussExpense={onDiscussExpense}
-        isManager={isManager}
-      />
+          {/* Filter Toolbar */}
+          <FilterBar
+            filters={filters}
+            onFilterChange={handleFilterChange}
+            onClearFilters={handleClearFilters}
+            categories={categories}
+            locations={locations}
+            paymentMethods={paymentMethods}
+            trips={trips}
+            filteredCount={filteredExpenses.length}
+            totalCount={expenses.length}
+          />
+
+          {/* Expense Table with desktop & mobile layouts */}
+          <ExpenseTable
+            filterKey={JSON.stringify(filters)}
+            expenses={filteredExpenses}
+            trips={trips}
+            totalExpensesCount={expenses.length}
+            onAddExpense={onAddExpense}
+            onViewExpense={(expense) => setSelectedExpenseForDetails(expense)}
+            onEditExpense={(expense) => onEditExpense(expense)}
+            onDeleteExpense={(id) => {
+              setSelectedExpenseForDetails(null);
+              setExpenseIdToDelete(id);
+            }}
+            onBulkDelete={(ids) => setBulkIdsToDelete(ids)}
+            onClearFilters={handleClearFilters}
+            onDiscussExpense={onDiscussExpense}
+            isManager={isManager}
+          />
+        </>
+      ) : (
+        /* Receipt Verification View */
+        <ReceiptVerificationSection
+          expenses={expenses}
+          trips={trips}
+          onOpenVerifyModal={(exp, list) => {
+            setSelectedExpenseForVerification(exp);
+            setVerificationExpensesList(list);
+          }}
+          isManager={isManager}
+        />
+      )}
 
       {/* Expense Details View Modal */}
       <ExpenseDetailsModal
@@ -379,6 +468,27 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
           setExpenseIdToDelete(id);
         }}
         onDiscuss={onDiscussExpense}
+        onOpenVerifyModal={(expense) => {
+          setSelectedExpenseForVerification(expense);
+          setVerificationExpensesList(expenses);
+        }}
+        isManager={isManager}
+      />
+
+      {/* Receipt Side-by-Side Verification Modal */}
+      <ReceiptVerificationModal
+        isOpen={Boolean(selectedExpenseForVerification)}
+        onClose={() => setSelectedExpenseForVerification(null)}
+        expense={selectedExpenseForVerification}
+        expenses={verificationExpensesList.length > 0 ? verificationExpensesList : expenses}
+        trips={trips}
+        onVerify={(id, status, notes) => {
+          if (onVerifyExpense) {
+            onVerifyExpense(id, status, notes);
+          }
+        }}
+        onSelectExpense={(exp) => setSelectedExpenseForVerification(exp)}
+        onNotify={onNotify}
         isManager={isManager}
       />
 

@@ -28,6 +28,7 @@ interface ExpenseDetailsModalProps {
   onEdit: (expense: Expense) => void;
   onDelete: (id: string) => void;
   onDiscuss?: (expense: Expense) => void;
+  onOpenVerifyModal?: (expense: Expense) => void;
   isManager?: boolean;
 }
 
@@ -39,6 +40,7 @@ export const ExpenseDetailsModal: React.FC<ExpenseDetailsModalProps> = ({
   onEdit,
   onDelete,
   onDiscuss,
+  onOpenVerifyModal,
   isManager = false,
 }) => {
   const { handleBackdropClick } = useModalA11y({ isOpen, onClose });
@@ -69,9 +71,19 @@ export const ExpenseDetailsModal: React.FC<ExpenseDetailsModalProps> = ({
               ) : (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                   <CheckCircle2 className="h-3 w-3" />
-                  Verified Entry
+                  Valid Record
                 </span>
               )}
+              {expense.verificationStatus === 'verified' ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800 border border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Receipt Verified
+                </span>
+              ) : expense.verificationStatus === 'verification_pending' ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800 border border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800">
+                  Verification Pending
+                </span>
+              ) : null}
               {expense.rawOriginal?.rowNumber && (
                 <span className="text-[11px] font-mono text-slate-400">
                   Row #{expense.rawOriginal.rowNumber}
@@ -188,18 +200,38 @@ export const ExpenseDetailsModal: React.FC<ExpenseDetailsModalProps> = ({
           )}
 
           {/* Receipt Section */}
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3.5">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">
-              Receipt Document
-            </span>
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3.5 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                Receipt Document & Verification
+              </span>
+              {onOpenVerifyModal && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenVerifyModal(expense);
+                  }}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline"
+                >
+                  Side-by-Side Review →
+                </button>
+              )}
+            </div>
+
             {expense.receipt ? (
               <div className="space-y-3">
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2 truncate pr-2">
                     <FileText className="h-4 w-4 text-blue-600 shrink-0" />
                     <span className="truncate font-medium text-slate-800 dark:text-slate-200">
-                      {expense.receiptName || 'Attached Receipt'}
+                      {expense.receiptName || expense.receiptMetadata?.fileName || 'Attached Receipt'}
                     </span>
+                    {expense.receiptMetadata?.fileSize ? (
+                      <span className="text-[10px] text-slate-400">
+                        ({(expense.receiptMetadata.fileSize / 1024).toFixed(0)} KB)
+                      </span>
+                    ) : null}
                   </div>
                   <a
                     href={expense.receipt}
@@ -212,6 +244,19 @@ export const ExpenseDetailsModal: React.FC<ExpenseDetailsModalProps> = ({
                     Download
                   </a>
                 </div>
+
+                {/* Verification metadata block if verified */}
+                {expense.verifiedAt && (
+                  <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/40 p-2.5 text-[11px] border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300">
+                    <p className="font-semibold">
+                      ✓ Verified by {expense.verifiedByName || 'Auditor'} on{' '}
+                      {new Date(expense.verifiedAt).toLocaleDateString()}
+                    </p>
+                    {expense.verificationNotes && (
+                      <p className="italic mt-0.5">"{expense.verificationNotes}"</p>
+                    )}
+                  </div>
+                )}
 
                 {/* Image preview if image */}
                 {(expense.receipt.startsWith('data:image') || expense.receipt.startsWith('http')) && (

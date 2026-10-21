@@ -12,12 +12,16 @@ import { useScrollReveal } from '../hooks/useScrollReveal';
 import {
   Wallet,
   CheckCircle,
+  CheckCircle2,
   Clock,
   Receipt,
   Calendar,
   TrendingDown,
   AlertTriangle,
   FileCheck,
+  FileText,
+  FileQuestion,
+  ShieldCheck,
   ArrowRight,
 } from 'lucide-react';
 
@@ -54,6 +58,38 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 }) => {
   const isAllTrips = activeTripId === 'all';
   const scopeLabel = isAllTrips ? 'All Trips' : currentTrip?.name || 'Selected Trip';
+
+  // Real-time Receipt Storage & Verification metrics for the active scope
+  const receiptMetrics = React.useMemo(() => {
+    let verifiedCount = 0;
+    let pendingCount = 0;
+    let attachedCount = 0;
+    let missingCount = 0;
+
+    expenses.forEach((e) => {
+      const status = e.verificationStatus || (e.receipt ? 'receipt_attached' : 'receipt_missing');
+      if (status === 'verified') verifiedCount++;
+      else if (status === 'verification_pending') pendingCount++;
+      else if (status === 'receipt_attached') attachedCount++;
+      else missingCount++;
+    });
+
+    const total = expenses.length;
+    const verifiedPercent = total > 0 ? Math.round((verifiedCount / total) * 100) : 0;
+    const totalAttached = verifiedCount + pendingCount + attachedCount;
+    const attachedPercent = total > 0 ? Math.round((totalAttached / total) * 100) : 0;
+
+    return {
+      total,
+      verifiedCount,
+      pendingCount,
+      attachedCount: totalAttached,
+      unreviewedCount: attachedCount,
+      missingCount,
+      verifiedPercent,
+      attachedPercent,
+    };
+  }, [expenses]);
 
   // Smooth scroll-reveal observers for dashboard sections
   const cardsReveal = useScrollReveal({ threshold: 0.05 });
@@ -152,6 +188,95 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         onManageTrips={() => onNavigateTab('trips')}
       />
 
+      {/* Receipt Storage & Entry-Wise Verification Banner */}
+      <div className="rounded-2xl border border-emerald-200/90 bg-gradient-to-r from-emerald-50/90 via-teal-50/60 to-cyan-50/40 p-4 sm:p-5 shadow-xs dark:border-emerald-900/60 dark:from-emerald-950/40 dark:via-teal-950/30 dark:to-cyan-950/20">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-md shadow-emerald-600/20">
+              <ShieldCheck className="h-6 w-6" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Receipt Storage & Entry-Wise Verification
+                </h3>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800 dark:bg-emerald-900/80 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {receiptMetrics.verifiedCount} of {receiptMetrics.total} Verified ({receiptMetrics.verifiedPercent}%)
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+                Persistent storage active for receipts (PNG, JPG, PDF) • Entry-level verification with side-by-side audit and metadata tracking.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              onClick={() => onNavigateTab('receipt-verification')}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              <span>Audit & Verify Receipts</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Live Mini Progress & Stat Breakdown */}
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-emerald-200/60 dark:border-emerald-900/40">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300">
+              <CheckCircle2 className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Verified</div>
+              <div className="text-sm font-bold text-slate-900 dark:text-white">
+                {receiptMetrics.verifiedCount}{' '}
+                <span className="text-[10px] text-emerald-600 font-semibold">({receiptMetrics.verifiedPercent}%)</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300">
+              <FileText className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Attached</div>
+              <div className="text-sm font-bold text-slate-900 dark:text-white">
+                {receiptMetrics.attachedCount}{' '}
+                <span className="text-[10px] text-blue-600 font-semibold">({receiptMetrics.attachedPercent}%)</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300">
+              <Clock className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Pending Review</div>
+              <div className="text-sm font-bold text-slate-900 dark:text-white">
+                {receiptMetrics.pendingCount}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              <FileQuestion className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Missing Receipt</div>
+              <div className="text-sm font-bold text-slate-900 dark:text-white">
+                {receiptMetrics.missingCount}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Google Drive & Payment Proofs Quick Audit Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-blue-200/90 bg-gradient-to-r from-blue-50/90 to-indigo-50/70 p-4 shadow-xs dark:border-blue-900/60 dark:from-blue-950/40 dark:to-indigo-950/30">
         <div className="flex items-center gap-3">
@@ -189,8 +314,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             subtitle={isAllTrips ? 'Overall spending' : `${currentTrip?.name} spend`}
             icon={Wallet}
             accentColor="brand"
-            badge={{ text: 'Verified', variant: 'info' }}
-            onClick={() => onNavigateTab('expenses')}
+            badge={{
+              text: `${receiptMetrics.verifiedCount}/${expenses.length} Verified`,
+              variant: receiptMetrics.verifiedCount === expenses.length && expenses.length > 0 ? 'success' : 'info',
+            }}
+            onClick={() => onNavigateTab('receipt-verification')}
           />
         </div>
 
