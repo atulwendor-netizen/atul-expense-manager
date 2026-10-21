@@ -12,6 +12,7 @@ import { PaymentProofsPage } from './pages/PaymentProofsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ChatPage } from './pages/ChatPage';
 import { AuditLogPage } from './pages/AuditLogPage';
+import { CalculatorPage } from './pages/CalculatorPage';
 import { ExpenseModal } from './components/ExpenseModal';
 import { ExpenseDetailsModal } from './components/ExpenseDetailsModal';
 import { ReimbursementModal } from './components/ReimbursementModal';
@@ -99,10 +100,10 @@ export function App() {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
-  const [expenseToEdit, setExpenseToEdit] = useState<Expense | null>(null);
+  const [expenseToEdit, setExpenseToEdit] = useState<Expense | Partial<Expense> | null>(null);
   const [viewingExpenseDetails, setViewingExpenseDetails] = useState<Expense | null>(null);
   const [isReimbursementModalOpen, setIsReimbursementModalOpen] = useState(false);
-  const [reimbursementToEdit, setReimbursementToEdit] = useState<Reimbursement | null>(null);
+  const [reimbursementToEdit, setReimbursementToEdit] = useState<Reimbursement | Partial<Reimbursement> | null>(null);
   const [isTripModalOpen, setIsTripModalOpen] = useState(false);
   const [tripToEdit, setTripToEdit] = useState<Trip | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -196,6 +197,15 @@ export function App() {
     setIsExpenseModalOpen(true);
   };
 
+  const handleOpenAddExpenseWithPreload = (prefill?: Partial<Expense>) => {
+    if (isManager) {
+      addToast('error', 'Operation denied: Managers operate in Read-Only Audit Mode.');
+      return;
+    }
+    setExpenseToEdit(prefill || null);
+    setIsExpenseModalOpen(true);
+  };
+
   const handleEditExpense = (expense: Expense) => {
     if (isManager) {
       addToast('error', 'Operation denied: Modifying expenses is restricted to Account Owner.');
@@ -246,6 +256,15 @@ export function App() {
       return;
     }
     setReimbursementToEdit(null);
+    setIsReimbursementModalOpen(true);
+  };
+
+  const handleOpenAddReimbursementWithPreload = (prefill?: Partial<Reimbursement>) => {
+    if (isManager) {
+      addToast('error', 'Operation denied: Managers operate in Read-Only Audit Mode.');
+      return;
+    }
+    setReimbursementToEdit(prefill || null);
     setIsReimbursementModalOpen(true);
   };
 
@@ -543,6 +562,22 @@ export function App() {
               onEditReimbursement={handleEditReimbursement}
               onDeleteReimbursement={handleDeleteReimbursement}
               onDiscussReimbursement={openReimbursementDiscussion}
+              onNotify={addToast}
+              onNavigateTab={handleSelectTab}
+              isManager={isManager}
+            />
+          )}
+
+          {/* Tab: Financial & Travel Calculator */}
+          {activeTab === 'calculator' && (
+            <CalculatorPage
+              expenses={expenses}
+              reimbursements={reimbursements}
+              trips={trips}
+              activeTripId={activeTripId}
+              onSelectTrip={setActiveTripId}
+              onOpenAddExpenseWithPreload={handleOpenAddExpenseWithPreload}
+              onOpenAddReimbursementWithPreload={handleOpenAddReimbursementWithPreload}
               onNotify={addToast}
               onNavigateTab={handleSelectTab}
               isManager={isManager}

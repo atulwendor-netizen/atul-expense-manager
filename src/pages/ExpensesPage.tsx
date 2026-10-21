@@ -18,6 +18,7 @@ import {
   FileText,
   ChevronDown,
   FileCheck,
+  Calculator,
 } from 'lucide-react';
 
 interface ExpensesPageProps {
@@ -271,6 +272,17 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
             >
               <FileCheck className="h-4 w-4 text-blue-600" />
               <span>Payment Proofs</span>
+            </button>
+          )}
+
+          {/* Calculator Shortcut */}
+          {onNavigateTab && (
+            <button
+              onClick={() => onNavigateTab('calculator')}
+              className="flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50/70 px-3.5 py-2 text-xs font-semibold text-violet-700 shadow-sm hover:bg-violet-100 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300 transition-colors"
+            >
+              <Calculator className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+              <span>Calculator</span>
             </button>
           )}
 

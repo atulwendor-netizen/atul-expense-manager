@@ -12,6 +12,7 @@ import {
   MessageSquare,
   ShieldAlert,
   FileCheck,
+  Calculator,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -36,6 +37,7 @@ const navItems: NavItemDef[] = [
   { id: 'expenses', label: 'Expenses', icon: Receipt },
   { id: 'trips', label: 'Trips', icon: Compass },
   { id: 'reimbursements', label: 'Reimbursements', icon: DollarSign },
+  { id: 'calculator', label: 'Calculator', icon: Calculator },
   { id: 'payment-proofs', label: 'Payment Proofs', icon: FileCheck },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   { id: 'reports', label: 'Reports & Export', icon: FileSpreadsheet },

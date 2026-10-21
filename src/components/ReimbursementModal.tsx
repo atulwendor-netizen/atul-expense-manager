@@ -9,7 +9,7 @@ interface ReimbursementModalProps {
   onSave: (data: Omit<Reimbursement, 'id'> & { id?: string }) => void;
   trips: Trip[];
   activeTripId: string;
-  reimbursementToEdit?: Reimbursement | null;
+  reimbursementToEdit?: Reimbursement | Partial<Reimbursement> | null;
 }
 
 export const ReimbursementModal: React.FC<ReimbursementModalProps> = ({
@@ -32,11 +32,17 @@ export const ReimbursementModal: React.FC<ReimbursementModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       if (reimbursementToEdit) {
-        setDate(reimbursementToEdit.date || '');
-        setAmount(String(reimbursementToEdit.amount || ''));
-        setReference(reimbursementToEdit.reference || '');
+        setDate(reimbursementToEdit.date || new Date().toISOString().split('T')[0]);
+        setAmount(
+          reimbursementToEdit.amount !== undefined && reimbursementToEdit.amount !== null
+            ? String(reimbursementToEdit.amount)
+            : ''
+        );
+        setReference(reimbursementToEdit.reference || `REIMB-${Date.now().toString().slice(-4)}`);
         setNotes(reimbursementToEdit.notes || '');
-        setTripId(reimbursementToEdit.tripId || '');
+        setTripId(
+          reimbursementToEdit.tripId || (activeTripId !== 'all' ? activeTripId : trips[0]?.id || '')
+        );
       } else {
         setDate(new Date().toISOString().split('T')[0]);
         setAmount('');
@@ -101,7 +107,7 @@ export const ReimbursementModal: React.FC<ReimbursementModalProps> = ({
             </div>
             <div>
               <h3 id="reimbursement-modal-title" className="text-sm font-bold text-slate-900 dark:text-white">
-                {reimbursementToEdit ? 'Edit Reimbursement Entry' : 'Record Reimbursement Payment'}
+                {reimbursementToEdit?.id ? 'Edit Reimbursement Entry' : 'Record Reimbursement Payment'}
               </h3>
               <p className="text-[11px] text-slate-500">
                 Instantly recalculates pending balance

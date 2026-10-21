@@ -32,10 +32,8 @@ import {
   Plus,
   Link as LinkIcon,
   FolderDown,
-  FileText,
   ChevronDown,
   ChevronUp,
-  Image as ImageIcon,
   Lock,
   Folder,
   Trash2,
@@ -43,9 +41,6 @@ import {
 import { DriveFileViewerModal } from '../components/DriveFileViewerModal';
 import {
   parseGoogleDriveLink,
-  formatFileSize,
-  isImageFile,
-  isPdfFile,
   fetchGoogleDriveFolderFiles,
   getDriveWebLink,
   checkGoogleAuthStatus,
@@ -90,7 +85,7 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
   onDeleteProof,
   onClearAllProofs,
   onDeleteDriveFile,
-  onClearDriveFiles,
+  onClearDriveFiles: _onClearDriveFiles,
   onUpdateDriveConfig,
   onRefreshDriveFolder,
   onDiscussExpense,
@@ -125,15 +120,12 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
   const [isImportingLink, setIsImportingLink] = useState(false);
   const [linkImportError, setLinkImportError] = useState<string | null>(null);
   const [activeViewerFile, setActiveViewerFile] = useState<DriveFolderFile | null>(null);
-  const [fileFilter, setFileFilter] = useState<'all' | 'images' | 'pdfs'>('all');
   const [isFolderExpanded, setIsFolderExpanded] = useState<boolean>(true);
   const [serverAuthStatus, setServerAuthStatus] = useState<GoogleAuthStatus | null>(null);
   const [isAuthorizing, setIsAuthorizing] = useState<boolean>(false);
-  const [folderViewMode, setFolderViewMode] = useState<'gallery' | 'embed'>('gallery');
   const [embeddedFolderId, setEmbeddedFolderId] = useState<string>(() => {
     return googleDriveConfig.folderId || 'folder-gdrive-payment-proofs-2026';
   });
-  const [quickFileInput, setQuickFileInput] = useState<string>('');
 
   // Keep importedFiles synchronized with incoming driveFolderFiles (filtering demo files)
   useEffect(() => {
@@ -227,14 +219,6 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
     }
   };
 
-  // Filtered folder files for gallery
-  const filteredDriveFiles = useMemo(() => {
-    return importedFiles.filter((f) => {
-      if (fileFilter === 'images') return isImageFile(f.mimeType, f.name);
-      if (fileFilter === 'pdfs') return isPdfFile(f.mimeType, f.name);
-      return true;
-    });
-  }, [importedFiles, fileFilter]);
 
   // Import / View Folder link handler
   const handleImportLink = async (e?: React.FormEvent) => {
@@ -291,24 +275,22 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
 
       try {
         const res = await fetchGoogleDriveFolderFiles(parsed.id, googleDriveConfig);
+        setIsFolderExpanded(true);
         if (res.success && res.files.length > 0) {
           setImportedFiles(res.files);
           setLinkImportError(null);
-          setFolderViewMode('gallery');
           onNotify('success', `Successfully imported ${res.files.length} payment proof files from Google Drive.`);
         } else if (res.success && res.files.length === 0) {
           setImportedFiles([]);
           setLinkImportError(null);
-          setFolderViewMode('embed');
           onNotify('info', 'Folder link connected. Displaying live folder explorer.');
         } else {
           // If API access requires OAuth or permissions, smoothly activate the Live Drive Folder Explorer
-          setFolderViewMode('embed');
           setLinkImportError(null);
           onNotify('success', `Google Drive folder loaded! Displaying live folder explorer below.`);
         }
       } catch {
-        setFolderViewMode('embed');
+        setIsFolderExpanded(true);
         setLinkImportError(null);
         onNotify('success', `Google Drive folder loaded in Live Explorer view.`);
       }
@@ -321,37 +303,6 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
     }
   };
 
-  // Quick direct receipt file import
-  const handleQuickFileImport = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = quickFileInput.trim();
-    if (!trimmed) return;
-    const parsed = parseGoogleDriveLink(trimmed);
-    if (!parsed) {
-      onNotify('error', 'Please paste a valid Google Drive file link.');
-      return;
-    }
-    const fileId = parsed.id;
-    let match = importedFiles.find((f) => f.id === fileId);
-    if (!match) {
-      const isPdf = trimmed.toLowerCase().includes('pdf');
-      match = {
-        id: fileId,
-        name: `Receipt_${fileId.substring(0, 8)}${isPdf ? '.pdf' : '.png'}`,
-        mimeType: isPdf ? 'application/pdf' : 'image/png',
-        size: 1024 * 450,
-        webViewLink: getDriveWebLink(fileId),
-        modifiedTime: new Date().toISOString(),
-        virtualFolder: 'Direct Proof Import',
-      };
-      setImportedFiles((prev) => [match!, ...prev.filter((p) => p.id !== match!.id)]);
-      backend.addDriveFolderFile(match);
-    }
-    setQuickFileInput('');
-    setActiveViewerFile(match);
-    setFolderViewMode('gallery');
-    onNotify('success', `Added payment proof from Drive link (${match.name}).`);
-  };
 
   // Refresh Folder to discover newly added files without duplicates
   const handleRefreshFolder = async () => {
@@ -384,59 +335,20 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
     }
   };
 
-  // Simulate new upload for testing real folder refresh
-  const handleSimulateNewUpload = () => {
-    const newId = `gdrive-upload-${Date.now().toString(36)}`;
-    const isPdf = Math.random() > 0.5;
-    const newFile: DriveFolderFile = {
-      id: newId,
-      name: isPdf
-        ? `Service_Visit_Hotel_GST_Invoice_${Date.now().toString().slice(-4)}.pdf`
-        : `UPI_Payment_Proof_Lunch_${Date.now().toString().slice(-4)}.png`,
-      mimeType: isPdf ? 'application/pdf' : 'image/png',
-      size: isPdf ? 284000 : 195000,
-      webViewLink: `https://drive.google.com/file/d/${newId}/view`,
-      thumbnailLink: undefined,
-      modifiedTime: new Date().toISOString(),
-      virtualFolder: 'Service Visit',
-    };
-
-    backend.addDriveFolderFile(newFile);
-    setImportedFiles((prev) => [newFile, ...prev]);
-    onNotify('success', `Simulated new file in Drive folder: "${newFile.name}". Click "Refresh" to verify.`);
-  };
-
-  // Delete single file from Proofs Gallery
+  // Delete single file from Drive files
   const handleDeleteDriveFile = (fileId: string, fileName?: string) => {
     if (isManager) {
-      onNotify('warning', 'Deleting gallery files is restricted in Audit mode.');
+      onNotify('warning', 'Deleting Drive files is restricted in Audit mode.');
       return;
     }
-    if (confirm(`Are you sure you want to remove ${fileName ? `"${fileName}"` : 'this file'} from the gallery?`)) {
+    if (confirm(`Are you sure you want to remove ${fileName ? `"${fileName}"` : 'this file'}?`)) {
       setImportedFiles((prev) => prev.filter((f) => f.id !== fileId));
       if (onDeleteDriveFile) {
         onDeleteDriveFile(fileId);
       } else {
         backend.deleteDriveFolderFile(fileId);
       }
-      onNotify('info', `Removed file from Proofs Gallery.`);
-    }
-  };
-
-  // Clear all files from Proofs Gallery
-  const handleClearDriveGallery = () => {
-    if (isManager) {
-      onNotify('warning', 'Clearing gallery files is restricted in Audit mode.');
-      return;
-    }
-    if (confirm(`Are you sure you want to delete all files from the Proofs Gallery?`)) {
-      setImportedFiles([]);
-      if (onClearDriveFiles) {
-        onClearDriveFiles();
-      } else {
-        backend.clearDriveFolderFiles();
-      }
-      onNotify('success', 'Cleared all files from Proofs Gallery.');
+      onNotify('info', `Removed Drive file.`);
     }
   };
 
@@ -746,276 +658,43 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
           </div>
         )}
 
-        {/* Folder Files Viewer Grid (Expandable) */}
+        {/* Live Google Drive Explorer (Expandable) */}
         {isFolderExpanded && (
-          <div className="space-y-3 pt-2 border-t border-slate-200/70 dark:border-slate-800">
-            {/* View Mode Switcher and Quick Direct File Import */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-1">
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  View Mode:
-                </span>
-                <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 border border-slate-200/80 dark:border-slate-700">
-                  <button
-                    type="button"
-                    onClick={() => setFolderViewMode('gallery')}
-                    className={`rounded-lg px-3 py-1 text-xs font-semibold transition-colors ${
-                      folderViewMode === 'gallery'
-                        ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                    }`}
+          <div className="pt-3 border-t border-slate-200/70 dark:border-slate-800">
+            {/* Live Google Drive Embedded Folder View */}
+            <div className="rounded-xl border border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-900 overflow-hidden shadow-sm animate-fade-in">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-2.5 bg-blue-50/80 dark:bg-blue-950/40 border-b border-blue-200 dark:border-blue-900 gap-2">
+                <div className="flex items-center gap-2">
+                  <Folder className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Live Google Drive Explorer ({embeddedFolderId})
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`https://drive.google.com/drive/folders/${embeddedFolderId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 transition-colors shadow-xs"
                   >
-                    Proofs Gallery ({importedFiles.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFolderViewMode('embed')}
-                    className={`rounded-lg px-3 py-1 text-xs font-semibold transition-colors ${
-                      folderViewMode === 'embed'
-                        ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    Live Drive Explorer
-                  </button>
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    <span>Open in Google Drive</span>
+                  </a>
                 </div>
               </div>
-
-              {!isManager && (
-                <form onSubmit={handleQuickFileImport} className="flex items-center gap-1.5 w-full sm:w-auto">
-                  <input
-                    type="text"
-                    value={quickFileInput}
-                    onChange={(e) => setQuickFileInput(e.target.value)}
-                    placeholder="Paste direct receipt/file link..."
-                    className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-xs text-slate-900 dark:text-white placeholder-slate-400 w-full sm:w-64"
-                  />
-                  <button
-                    type="submit"
-                    className="shrink-0 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 text-xs font-bold transition-colors shadow-xs"
-                  >
-                    + Add Receipt
-                  </button>
-                </form>
-              )}
-            </div>
-
-            {folderViewMode === 'embed' ? (
-              /* Live Google Drive Embedded Folder View */
-              <div className="rounded-xl border border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-900 overflow-hidden shadow-sm animate-fade-in">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-2.5 bg-blue-50/80 dark:bg-blue-950/40 border-b border-blue-200 dark:border-blue-900 gap-2">
-                  <div className="flex items-center gap-2">
-                    <Folder className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                      Live Google Drive Explorer ({embeddedFolderId})
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={`https://drive.google.com/drive/folders/${embeddedFolderId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 transition-colors shadow-xs"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                      <span>Open in Google Drive</span>
-                    </a>
-                  </div>
-                </div>
-                <div className="p-1 bg-slate-50 dark:bg-slate-950">
-                  <iframe
-                    src={`https://drive.google.com/embeddedfolderview?id=${embeddedFolderId}#grid`}
-                    className="w-full h-[520px] rounded-lg border-0 bg-white dark:bg-slate-900"
-                    title="Google Drive Folder Contents"
-                  />
-                </div>
-                <div className="p-3 bg-slate-50/80 dark:bg-slate-900/60 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-400">
-                  <p className="text-[11px]">
-                    💡 <span className="font-semibold text-slate-700 dark:text-slate-300">Quick Tip:</span> Double-click any file inside the frame to preview it, or paste an individual receipt link above to link directly to an expense.
-                  </p>
-                </div>
+              <div className="p-1 bg-slate-50 dark:bg-slate-950">
+                <iframe
+                  src={`https://drive.google.com/embeddedfolderview?id=${embeddedFolderId}#grid`}
+                  className="w-full h-[520px] rounded-lg border-0 bg-white dark:bg-slate-900"
+                  title="Google Drive Folder Contents"
+                />
               </div>
-            ) : (
-              <>
-            {/* Filter Pills and Actions */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">
-                  Filter Files:
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setFileFilter('all')}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
-                    fileFilter === 'all'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-                  }`}
-                >
-                  All ({importedFiles.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFileFilter('images')}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
-                    fileFilter === 'images'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-                  }`}
-                >
-                  Screenshots & Images ({importedFiles.filter((f) => isImageFile(f.mimeType, f.name)).length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFileFilter('pdfs')}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
-                    fileFilter === 'pdfs'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-                  }`}
-                >
-                  PDF Documents ({importedFiles.filter((f) => isPdfFile(f.mimeType, f.name)).length})
-                </button>
-              </div>
-
-              {/* Upload simulation button and Clear Gallery */}
-              {!isManager && (
-                <div className="flex items-center gap-2.5">
-                  <button
-                    type="button"
-                    onClick={handleSimulateNewUpload}
-                    title="Simulate adding a new file to Drive to test the Refresh feature"
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    <span>Simulate New Upload</span>
-                  </button>
-
-                  {importedFiles.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleClearDriveGallery}
-                      title="Delete all files from the Proofs Gallery"
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 hover:text-rose-700 dark:text-rose-400"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      <span>Clear Gallery</span>
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Files Grid */}
-            {filteredDriveFiles.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center dark:border-slate-800">
-                <FileText className="mx-auto h-8 w-8 text-slate-400" />
-                <p className="mt-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  {importedFiles.length === 0
-                    ? 'Proofs Gallery is empty. Paste a Google Drive folder link or receipt link above to import payment proofs.'
-                    : 'No files found matching the selected filter.'}
+              <div className="p-3 bg-slate-50/80 dark:bg-slate-900/60 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-400">
+                <p className="text-[11px]">
+                  💡 <span className="font-semibold text-slate-700 dark:text-slate-300">Quick Tip:</span> Double-click any file inside the frame to preview it, or open original files directly in Google Drive.
                 </p>
               </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-                {filteredDriveFiles.map((file) => {
-                  const isPdf = isPdfFile(file.mimeType, file.name);
-                  const webLink = file.webViewLink || getDriveWebLink(file.id);
-
-                  return (
-                    <div
-                      key={file.id}
-                      className="group relative flex flex-col justify-between rounded-xl border border-slate-200/80 bg-white p-3 shadow-xs hover:border-blue-400 dark:border-slate-800 dark:bg-slate-900/90 dark:hover:border-blue-600 transition-all"
-                    >
-                      <div>
-                        {/* File Thumbnail Preview */}
-                        <div
-                          onClick={() => setActiveViewerFile(file)}
-                          className="relative h-28 w-full rounded-lg bg-slate-100 dark:bg-slate-800 overflow-hidden cursor-pointer flex items-center justify-center border border-slate-200/60 dark:border-slate-800/60 mb-2.5 group-hover:opacity-95"
-                        >
-                          {file.thumbnailLink ? (
-                            <img
-                              src={file.thumbnailLink}
-                              alt={file.name}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : isPdf ? (
-                            <div className="flex flex-col items-center justify-center text-rose-500">
-                              <FileText className="h-10 w-10" />
-                              <span className="text-[10px] font-bold mt-1 uppercase">PDF Document</span>
-                            </div>
-                          ) : (
-                            <div className="flex flex-col items-center justify-center text-blue-500">
-                              <ImageIcon className="h-10 w-10" />
-                              <span className="text-[10px] font-bold mt-1 uppercase">Image File</span>
-                            </div>
-                          )}
-
-                          <div className="absolute inset-0 bg-slate-950/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                            <span className="inline-flex items-center gap-1 rounded-lg bg-white/95 px-2.5 py-1 text-[11px] font-bold text-slate-900 shadow-sm">
-                              <Eye className="h-3.5 w-3.5 text-blue-600" /> View
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* File Details */}
-                        <h4
-                          title={file.name}
-                          className="text-xs font-bold text-slate-900 dark:text-white truncate"
-                        >
-                          {file.name}
-                        </h4>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center justify-between">
-                          <span>{formatFileSize(file.size)}</span>
-                          <span className="font-medium text-slate-400">{file.virtualFolder || 'Drive'}</span>
-                        </p>
-                      </div>
-
-                      {/* Action Links */}
-                      <div className="flex items-center justify-between gap-1 pt-2.5 mt-2.5 border-t border-slate-100 dark:border-slate-800/80">
-                        <button
-                          type="button"
-                          onClick={() => setActiveViewerFile(file)}
-                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
-                        >
-                          <Eye className="h-3 w-3" />
-                          <span>{isPdf ? 'View PDF' : 'Preview'}</span>
-                        </button>
-
-                        <div className="flex items-center gap-1.5">
-                          <a
-                            href={webLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title="Open original file in Google Drive"
-                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                            <span>Drive</span>
-                          </a>
-
-                          {!isManager && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteDriveFile(file.id, file.name);
-                              }}
-                              title="Delete file from gallery"
-                              className="p-1 rounded text-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-              </>
-            )}
+            </div>
           </div>
         )}
       </div>

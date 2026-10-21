@@ -8,7 +8,7 @@ interface ExpenseModalProps {
   onClose: () => void;
   onSave: (data: Omit<Expense, 'id'> & { id?: string }) => void;
   onDelete?: (id: string) => void;
-  expenseToEdit?: Expense | null;
+  expenseToEdit?: Expense | Partial<Expense> | null;
   trips: Trip[];
 }
 
@@ -52,12 +52,12 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
 
   useEffect(() => {
     if (expenseToEdit) {
-      setDate(expenseToEdit.date || '');
+      setDate(expenseToEdit.date || new Date().toISOString().split('T')[0]);
       setDescription(expenseToEdit.description || '');
       setCategory(expenseToEdit.category || 'Transit');
       setAmount(expenseToEdit.amount !== null && expenseToEdit.amount !== undefined ? String(expenseToEdit.amount) : '');
       setPaymentMethod(expenseToEdit.paymentMethod || 'Digital / UPI');
-      setLocation(expenseToEdit.location || '');
+      setLocation(expenseToEdit.location || 'Mumbai');
       setNotes(expenseToEdit.notes || '');
       setTripId(expenseToEdit.tripId || (trips[0]?.id || ''));
       setReceipt(expenseToEdit.receipt || null);
@@ -157,7 +157,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
           <div>
             <h3 id="expense-modal-title" className="text-base font-bold text-slate-900 dark:text-white">
-              {expenseToEdit ? 'Edit Expense Record' : 'Log New Expense'}
+              {expenseToEdit?.id ? 'Edit Expense Record' : 'Log New Expense'}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {expenseToEdit?.rawOriginal?.rowNumber
@@ -371,13 +371,13 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
 
           {/* Modal Actions */}
           <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
-            {expenseToEdit && onDelete ? (
+            {expenseToEdit?.id && onDelete ? (
               <button
                 type="button"
                 onClick={() => {
                   if (confirm('Are you sure you want to delete this expense record?')) {
                     try {
-                      onDelete(expenseToEdit.id);
+                      onDelete(expenseToEdit.id!);
                       onClose();
                     } catch {
                       // Handled by toast in onDelete; keep record visible if deletion fails
