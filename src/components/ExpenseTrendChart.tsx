@@ -26,7 +26,7 @@ export const ExpenseTrendChart: React.FC<ExpenseTrendChartProps> = ({ expenses }
     expenses
       .filter((e) => e.status === 'valid' && e.date && typeof e.amount === 'number')
       .forEach((e) => {
-        const d = e.date;
+        const d = e.date.split('T')[0];
         dateMap.set(d, (dateMap.get(d) || 0) + (e.amount || 0));
       });
 
@@ -69,9 +69,10 @@ export const ExpenseTrendChart: React.FC<ExpenseTrendChartProps> = ({ expenses }
           </p>
         </div>
 
-        <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800 self-start sm:self-auto">
+        <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800 self-start sm:self-auto" role="group" aria-label="Trend chart view mode">
           <button
             onClick={() => setViewMode('daily')}
+            aria-pressed={viewMode === 'daily'}
             className={`rounded-lg px-3 py-1 text-xs font-medium transition-all ${
               viewMode === 'daily'
                 ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-900 dark:text-blue-400'
@@ -82,6 +83,7 @@ export const ExpenseTrendChart: React.FC<ExpenseTrendChartProps> = ({ expenses }
           </button>
           <button
             onClick={() => setViewMode('cumulative')}
+            aria-pressed={viewMode === 'cumulative'}
             className={`flex items-center gap-1 rounded-lg px-3 py-1 text-xs font-medium transition-all ${
               viewMode === 'cumulative'
                 ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-900 dark:text-blue-400'

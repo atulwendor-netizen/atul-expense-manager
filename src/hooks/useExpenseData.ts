@@ -451,7 +451,7 @@ export function useExpenseData() {
         }
       }
     } else {
-      durationDays = 15;
+      durationDays = undefined;
     }
     return calculateDashboardMetrics(tripFilteredExpenses, tripFilteredReimbursements, durationDays);
   }, [tripFilteredExpenses, tripFilteredReimbursements, currentTrip]);

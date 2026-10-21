@@ -1,6 +1,7 @@
 import React from 'react';
 import { Expense, Trip } from '../types/index';
 import { formatCurrency, formatDate } from '../utils/calculations';
+import { useModalA11y } from '../hooks/useModalA11y';
 import {
   X,
   Calendar,
@@ -39,14 +40,22 @@ export const ExpenseDetailsModal: React.FC<ExpenseDetailsModalProps> = ({
   onDiscuss,
   isManager = false,
 }) => {
+  const { handleBackdropClick } = useModalA11y({ isOpen, onClose });
+
   if (!isOpen || !expense) return null;
 
   const trip = trips.find((t) => t.id === expense.tripId);
   const isIncomplete = expense.status === 'incomplete' || expense.amount === null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden my-8">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="expense-details-title"
+      onClick={handleBackdropClick}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150 overflow-y-auto"
+    >
+      <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden my-auto">
         {/* Header */}
         <div className="flex items-start justify-between border-b border-slate-100 p-5 dark:border-slate-800">
           <div className="space-y-1 pr-4">
@@ -74,12 +83,13 @@ export const ExpenseDetailsModal: React.FC<ExpenseDetailsModalProps> = ({
                 </span>
               )}
             </div>
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white mt-1">
+            <h3 id="expense-details-title" className="text-lg font-bold text-slate-900 dark:text-white mt-1">
               {expense.description || 'Untitled Expense'}
             </h3>
           </div>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
           >
             <X className="h-5 w-5" />

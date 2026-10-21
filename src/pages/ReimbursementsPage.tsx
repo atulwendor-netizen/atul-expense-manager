@@ -43,7 +43,7 @@ export const ReimbursementsPage: React.FC<ReimbursementsPageProps> = ({
   onEditReimbursement,
   onDeleteReimbursement,
   onDiscussReimbursement,
-  onNotify,
+  onNotify: _onNotify,
   onNavigateTab,
   isManager = false,
 }) => {
@@ -62,7 +62,7 @@ export const ReimbursementsPage: React.FC<ReimbursementsPageProps> = ({
   const scopedExpenses = useMemo(() => {
     return expenses.filter((e) => {
       if (selectedTripFilter !== 'all' && e.tripId !== selectedTripFilter) return false;
-      return e.status === 'valid' && typeof e.amount === 'number';
+      return e.status === 'valid' && typeof e.amount === 'number' && !isNaN(e.amount);
     });
   }, [expenses, selectedTripFilter]);
 
@@ -108,7 +108,7 @@ export const ReimbursementsPage: React.FC<ReimbursementsPageProps> = ({
   const tripBreakdowns = useMemo(() => {
     return trips.map((trip) => {
       const tripValidExpenses = expenses.filter(
-        (e) => e.tripId === trip.id && e.status === 'valid' && typeof e.amount === 'number'
+        (e) => e.tripId === trip.id && e.status === 'valid' && typeof e.amount === 'number' && !isNaN(e.amount)
       );
       const tripTotalExpense = tripValidExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
       const tripReimbursements = reimbursements.filter((r) => r.tripId === trip.id);
@@ -131,9 +131,13 @@ export const ReimbursementsPage: React.FC<ReimbursementsPageProps> = ({
 
   const handleConfirmDelete = () => {
     if (reimbursementToDelete) {
-      onDeleteReimbursement(reimbursementToDelete.id);
-      onNotify('success', `Removed reimbursement payment of ₹${reimbursementToDelete.amount.toLocaleString('en-IN')}`);
-      setReimbursementToDelete(null);
+      try {
+        onDeleteReimbursement(reimbursementToDelete.id);
+      } catch {
+        // Error toast is handled by onDeleteReimbursement in App.tsx
+      } finally {
+        setReimbursementToDelete(null);
+      }
     }
   };
 

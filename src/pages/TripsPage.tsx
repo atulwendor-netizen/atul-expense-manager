@@ -47,7 +47,7 @@ export const TripsPage: React.FC<TripsPageProps> = ({
   onDeleteTrip,
   onToggleArchiveTrip,
   onDiscussTrip,
-  onNotify,
+  onNotify: _onNotify,
   isManager = false,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,7 +59,7 @@ export const TripsPage: React.FC<TripsPageProps> = ({
     const totalTripsCount = trips.length;
     const activeTripsCount = trips.filter((t) => !t.isArchived).length;
     const totalSpend = expenses
-      .filter((e) => e.status === 'valid' && typeof e.amount === 'number')
+      .filter((e) => e.status === 'valid' && typeof e.amount === 'number' && !isNaN(e.amount))
       .reduce((sum, e) => sum + (e.amount || 0), 0);
     const totalReimbursed = reimbursements.reduce((sum, r) => sum + (r.amount || 0), 0);
     const pendingDue = Math.max(0, totalSpend - totalReimbursed);
@@ -79,9 +79,11 @@ export const TripsPage: React.FC<TripsPageProps> = ({
       // Valid & incomplete expenses for this trip
       const tripExpenses = expenses.filter((e) => e.tripId === trip.id);
       const validExpenses = tripExpenses.filter(
-        (e) => e.status === 'valid' && typeof e.amount === 'number'
+        (e) => e.status === 'valid' && typeof e.amount === 'number' && !isNaN(e.amount)
       );
-      const incompleteCount = tripExpenses.filter((e) => e.status === 'incomplete').length;
+      const incompleteCount = tripExpenses.filter(
+        (e) => e.status === 'incomplete' || e.amount === null || isNaN(e.amount as number)
+      ).length;
 
       const totalSpend = validExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
 
@@ -152,9 +154,13 @@ export const TripsPage: React.FC<TripsPageProps> = ({
 
   const handleConfirmDelete = () => {
     if (tripToDelete) {
-      onDeleteTrip(tripToDelete.id);
-      onNotify('success', `Deleted trip "${tripToDelete.name}". Associated expenses unlinked.`);
-      setTripToDelete(null);
+      try {
+        onDeleteTrip(tripToDelete.id);
+      } catch {
+        // Error toast is handled by onDeleteTrip in App.tsx
+      } finally {
+        setTripToDelete(null);
+      }
     }
   };
 

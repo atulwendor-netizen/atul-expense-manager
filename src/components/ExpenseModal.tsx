@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Expense, Trip } from '../types/index';
 import { X, Upload, FileText, Trash2 } from 'lucide-react';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface ExpenseModalProps {
   isOpen: boolean;
@@ -35,6 +36,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   expenseToEdit,
   trips,
 }) => {
+  const { handleBackdropClick } = useModalA11y({ isOpen, onClose });
   const [date, setDate] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Transit');
@@ -46,6 +48,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   const [receipt, setReceipt] = useState<string | null>(null);
   const [receiptName, setReceiptName] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (expenseToEdit) {
@@ -115,31 +118,45 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
       return;
     }
 
-    onSave({
-      id: expenseToEdit?.id,
-      date: date.trim(),
-      description: description.trim(),
-      category: category.trim(),
-      amount: parsedAmount,
-      paymentMethod,
-      location: location.trim(),
-      notes: notes.trim(),
-      tripId: tripId || null,
-      receipt,
-      receiptName,
-      status: 'valid',
-    });
+    if (isSubmitting) return;
 
-    onClose();
+    try {
+      setIsSubmitting(true);
+      onSave({
+        id: expenseToEdit?.id,
+        date: date.trim(),
+        description: description.trim(),
+        category: category.trim(),
+        amount: parsedAmount,
+        paymentMethod,
+        location: location.trim(),
+        notes: notes.trim(),
+        tripId: tripId || null,
+        receipt,
+        receiptName,
+        status: 'valid',
+      });
+      onClose();
+    } catch {
+      // Failed save: keep modal open with inputs intact, toast shows actionable error
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="expense-modal-title"
+      onClick={handleBackdropClick}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto"
+    >
       <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 my-8">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
           <div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+            <h3 id="expense-modal-title" className="text-base font-bold text-slate-900 dark:text-white">
               {expenseToEdit ? 'Edit Expense Record' : 'Log New Expense'}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -150,6 +167,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
           </div>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
           >
             <X className="h-5 w-5" />
@@ -161,10 +179,11 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
           {/* Row: Date & Amount */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="expense-input-date" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Date <span className="text-rose-500">*</span>
               </label>
               <input
+                id="expense-input-date"
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
@@ -178,10 +197,11 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="expense-input-amount" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Amount (₹) <span className="text-rose-500">*</span>
               </label>
               <input
+                id="expense-input-amount"
                 type="number"
                 step="any"
                 min="0"
@@ -200,10 +220,11 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
 
           {/* Description */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+            <label htmlFor="expense-input-desc" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
               Description <span className="text-rose-500">*</span>
             </label>
             <input
+              id="expense-input-desc"
               type="text"
               value={description}
               placeholder="e.g. Dorm Stay, Cab from Andheri to Station"
@@ -220,10 +241,11 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
           {/* Row: Category & Payment Method */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="expense-input-category" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Category <span className="text-rose-500">*</span>
               </label>
               <select
+                id="expense-input-category"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -237,10 +259,11 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="expense-input-payment" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Payment Method
               </label>
               <select
+                id="expense-input-payment"
                 value={paymentMethod}
                 onChange={(e) => setPaymentMethod(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -257,10 +280,11 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
           {/* Row: Location & Associated Trip */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="expense-input-location" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Location
               </label>
               <input
+                id="expense-input-location"
                 type="text"
                 value={location}
                 placeholder="e.g. Mumbai, Pune, Gurgaon"
@@ -270,10 +294,11 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="expense-input-trip" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Trip Link
               </label>
               <select
+                id="expense-input-trip"
                 value={tripId}
                 onChange={(e) => setTripId(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -290,10 +315,11 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
 
           {/* Notes */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+            <label htmlFor="expense-input-notes" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
               Notes
             </label>
             <textarea
+              id="expense-input-notes"
               rows={2}
               value={notes}
               placeholder="e.g. Ticket details, vendor notes, train reference"
@@ -350,8 +376,12 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
                 type="button"
                 onClick={() => {
                   if (confirm('Are you sure you want to delete this expense record?')) {
-                    onDelete(expenseToEdit.id);
-                    onClose();
+                    try {
+                      onDelete(expenseToEdit.id);
+                      onClose();
+                    } catch {
+                      // Handled by toast in onDelete; keep record visible if deletion fails
+                    }
                   }
                 }}
                 className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-700 dark:text-rose-400"
@@ -373,9 +403,10 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
               </button>
               <button
                 type="submit"
-                className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors"
+                disabled={isSubmitting}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {expenseToEdit ? 'Save Changes' : 'Add Expense'}
+                {isSubmitting ? 'Saving...' : expenseToEdit ? 'Save Changes' : 'Add Expense'}
               </button>
             </div>
           </div>

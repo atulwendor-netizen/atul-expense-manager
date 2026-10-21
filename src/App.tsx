@@ -161,29 +161,11 @@ export function App() {
         params.get('action') === 'login' ||
         params.get('master') === 'true';
 
-      if (inviteEmail) {
-        const cleanEmail = inviteEmail.trim().toLowerCase();
-        loginWithCredentials(cleanEmail).then((res) => {
-          if (res.success && res.user) {
-            addToast(
-              'success',
-              `Welcome! Logged in as ${res.user.role === 'owner' ? 'Owner' : 'Manager / Auditor'} (${cleanEmail}) in ${res.user.role === 'owner' ? 'Full Access' : 'Read-Only Audit Mode'}.`
-            );
-          }
-        });
-        window.history.replaceState({}, document.title, '/');
-      } else if (roleParam === 'manager') {
-        loginWithCredentials('manager@email.com').then((res) => {
-          if (res.success && res.user) {
-            addToast(
-              'success',
-              'Welcome! Logged in as Manager / Auditor in Read-Only Audit Mode.'
-            );
-          }
-        });
-        window.history.replaceState({}, document.title, '/');
-      } else if (isMasterPortalRoute) {
+      if (inviteEmail || roleParam === 'manager' || isMasterPortalRoute) {
         setIsSignInModalOpen(true);
+        if (inviteEmail || roleParam) {
+          window.history.replaceState({}, document.title, '/');
+        }
       }
     } catch {
       // Fallback
@@ -234,24 +216,27 @@ export function App() {
       }
     } catch (err: any) {
       addToast('error', err.message || 'Operation failed');
+      throw err;
     }
   };
 
   const handleDeleteExpense = (id: string) => {
     try {
       deleteExpense(id);
-      addToast('success', 'Expense record deleted');
+      addToast('success', 'Expense record deleted successfully');
     } catch (err: any) {
       addToast('error', err.message || 'Delete operation failed');
+      throw err;
     }
   };
 
   const handleBulkDeleteExpenses = (ids: string[]) => {
     try {
       deleteMultipleExpenses(ids);
-      addToast('success', `Deleted ${ids.length} expense records`);
+      addToast('success', `Deleted ${ids.length} expense records successfully`);
     } catch (err: any) {
       addToast('error', err.message || 'Bulk delete failed');
+      throw err;
     }
   };
 
@@ -284,6 +269,7 @@ export function App() {
       }
     } catch (err: any) {
       addToast('error', err.message || 'Operation failed');
+      throw err;
     }
   };
 
@@ -293,6 +279,7 @@ export function App() {
       addToast('success', 'Reimbursement record removed');
     } catch (err: any) {
       addToast('error', err.message || 'Operation failed');
+      throw err;
     }
   };
 
@@ -325,6 +312,7 @@ export function App() {
       }
     } catch (err: any) {
       addToast('error', err.message || 'Operation failed');
+      throw err;
     }
   };
 
@@ -334,6 +322,7 @@ export function App() {
       addToast('success', 'Trip deleted');
     } catch (err: any) {
       addToast('error', err.message || 'Operation failed');
+      throw err;
     }
   };
 

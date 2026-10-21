@@ -70,7 +70,7 @@ export function exportReimbursementClaimToExcel(
 
   // Sheet 1: Summary Sheet
   const totalExpense = expenses
-    .filter((e) => e.status === 'valid' && typeof e.amount === 'number')
+    .filter((e) => e.status === 'valid' && typeof e.amount === 'number' && !isNaN(e.amount))
     .reduce((sum, e) => sum + (e.amount || 0), 0);
   const totalReimbursed = reimbursements.reduce((sum, r) => sum + (r.amount || 0), 0);
   const pendingDue = Math.max(0, totalExpense - totalReimbursed);
@@ -81,8 +81,8 @@ export function exportReimbursementClaimToExcel(
     { 'Financial Metric': 'Total Claimed Spend', 'Value': `₹${totalExpense.toLocaleString('en-IN')}` },
     { 'Financial Metric': 'Total Reimbursements Received', 'Value': `₹${totalReimbursed.toLocaleString('en-IN')}` },
     { 'Financial Metric': 'Net Pending Due to Employee', 'Value': `₹${pendingDue.toLocaleString('en-IN')}` },
-    { 'Financial Metric': 'Valid Transactions Count', 'Value': expenses.filter((e) => e.status === 'valid').length },
-    { 'Financial Metric': 'Incomplete / Unresolved Records', 'Value': expenses.filter((e) => e.status === 'incomplete').length },
+    { 'Financial Metric': 'Valid Transactions Count', 'Value': expenses.filter((e) => e.status === 'valid' && typeof e.amount === 'number' && !isNaN(e.amount)).length },
+    { 'Financial Metric': 'Incomplete / Unresolved Records', 'Value': expenses.filter((e) => e.status === 'incomplete' || e.amount === null || isNaN(e.amount as number)).length },
     { 'Financial Metric': 'Reimbursement Credits Count', 'Value': reimbursements.length },
   ];
   const summarySheet = XLSX.utils.json_to_sheet(summaryData);

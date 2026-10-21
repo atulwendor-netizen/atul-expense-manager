@@ -71,8 +71,16 @@ export const RecentExpenses: React.FC<RecentExpensesProps> = ({
           return (
             <div
               key={expense.id}
+              role={onEditExpense ? 'button' : undefined}
+              tabIndex={onEditExpense ? 0 : undefined}
               onClick={() => onEditExpense?.(expense)}
-              className="flex items-center justify-between py-3 transition-colors hover:bg-slate-50/60 dark:hover:bg-slate-800/40 rounded-xl px-2 cursor-pointer group"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onEditExpense?.(expense);
+                }
+              }}
+              className="flex items-center justify-between py-3 transition-colors hover:bg-slate-50/60 dark:hover:bg-slate-800/40 rounded-xl px-2 cursor-pointer group focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               <div className="min-w-0 pr-3">
                 <div className="flex items-center gap-2">

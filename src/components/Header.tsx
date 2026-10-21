@@ -57,6 +57,7 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="flex items-center gap-3 flex-1 max-w-md">
         <button
           onClick={onOpenMobileMenu}
+          aria-label="Open mobile navigation menu"
           className="rounded-xl p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 lg:hidden"
         >
           <Menu className="h-5 w-5" />
@@ -69,6 +70,7 @@ export const Header: React.FC<HeaderProps> = ({
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search expenses, notes, locations, tags..."
+            aria-label="Search expenses, notes, locations"
             className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-4 text-xs font-medium text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-800 dark:bg-slate-800/70 dark:text-white dark:placeholder-slate-500 dark:focus:bg-slate-800 transition-all"
           />
         </div>
@@ -89,6 +91,7 @@ export const Header: React.FC<HeaderProps> = ({
           <select
             value={activeTripId}
             onChange={(e) => onSelectTrip(e.target.value)}
+            aria-label="Select active trip"
             className="bg-transparent text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
           >
             <option value="all">All Trips & Stays</option>
@@ -104,6 +107,7 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           onClick={() => onNavigateTab('payment-proofs')}
           title="Payment Proofs & Drive Audit"
+          aria-label="Payment Proofs & Drive Audit"
           className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50/70 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300 transition-colors"
         >
           <FileCheck className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
@@ -122,6 +126,7 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           onClick={onToggleDarkMode}
           title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          aria-label={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
           className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white transition-colors"
         >
           {isDarkMode ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4" />}
@@ -131,6 +136,7 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           onClick={onOpenProfileModal}
           title="Account Profile & Permissions"
+          aria-label="Account Profile and Permissions"
           className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all shadow-xs ${
             isManager
               ? 'border-amber-300 bg-amber-50/90 text-amber-950 hover:bg-amber-100 dark:border-amber-900/80 dark:bg-amber-950/60 dark:text-amber-200'
@@ -173,6 +179,7 @@ export const Header: React.FC<HeaderProps> = ({
         {!isManager && (
           <button
             onClick={onOpenAddExpense}
+            aria-label="Add new expense record"
             className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all"
           >
             <Plus className="h-4 w-4" />

@@ -53,18 +53,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isManager = false,
 }) => {
   const visibleNavItems = navItems.filter((item) => !isManager || !item.ownerOnly);
+
+  // Close sidebar on Escape key when open on mobile
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  // Lock body scroll on mobile when sidebar is open
+  React.useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, [isOpen]);
+
   return (
     <>
       {/* Mobile backdrop */}
       {isOpen && (
         <div
           onClick={onClose}
+          aria-hidden="true"
           className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm lg:hidden transition-opacity"
         />
       )}
 
       {/* Sidebar container */}
       <aside
+        role="navigation"
+        aria-label="Main sidebar navigation"
         className={clsx(
           'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200/80 bg-white shadow-sm transition-transform duration-300 ease-in-out dark:border-slate-800/80 dark:bg-slate-900 lg:static lg:translate-x-0',
           isOpen ? 'translate-x-0' : '-translate-x-full'
@@ -87,6 +113,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           <button
             onClick={onClose}
+            aria-label="Close navigation menu"
             className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 lg:hidden"
           >
             <X className="h-5 w-5" />
@@ -108,7 +135,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
 
         {/* Navigation list */}
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3" aria-label="Sidebar Sections">
           {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -120,6 +147,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onSelectTab(item.id);
                   onClose();
                 }}
+                aria-current={isActive ? 'page' : undefined}
                 className={clsx(
                   'group flex w-full items-center justify-between rounded-xl px-3.5 py-2 text-xs font-semibold transition-all',
                   isActive

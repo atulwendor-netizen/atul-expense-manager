@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   UserProfile,
   UserRole,
@@ -64,6 +64,24 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
   const [selectedUserForDetails, setSelectedUserForDetails] = useState<WorkspaceMember | null>(null);
   const [createdInviteModal, setCreatedInviteModal] = useState<{ email: string; role: UserRole; link: string; mailto: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isInviteModalOpen) setIsInviteModalOpen(false);
+        if (selectedUserForDetails) setSelectedUserForDetails(null);
+        if (createdInviteModal) setCreatedInviteModal(null);
+      }
+    };
+    if (isInviteModalOpen || selectedUserForDetails || createdInviteModal) {
+      window.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [isInviteModalOpen, selectedUserForDetails, createdInviteModal]);
 
   const handleDeleteUser = (userId: string, name: string) => {
     if (typeof window !== 'undefined' && !window.confirm(`Are you sure you want to completely delete user "${name}" from authorized users? This will revoke their access and remove their user account.`)) {
@@ -680,9 +698,17 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
 
       {/* Invite Manager Modal */}
       {isInviteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="invite-manager-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsInviteModalOpen(false);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150"
+        >
           <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-1">
+            <h3 id="invite-manager-title" className="text-sm font-bold text-slate-900 dark:text-white mb-1">
               Invite Manager / Auditor
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
@@ -746,9 +772,17 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
 
       {/* User Details Modal */}
       {selectedUserForDetails && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="user-details-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedUserForDetails(null);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150"
+        >
           <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-2">
+            <h3 id="user-details-title" className="text-sm font-bold text-slate-900 dark:text-white mb-2">
               User Profile Details
             </h3>
             <div className="space-y-2 text-xs text-slate-600 dark:text-slate-300">
@@ -839,14 +873,22 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
 
       {/* Invitation Created & Share Modal */}
       {createdInviteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="invite-created-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setCreatedInviteModal(null);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150"
+        >
           <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400">
                 <CheckCircle2 className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                <h3 id="invite-created-title" className="text-sm font-bold text-slate-900 dark:text-white">
                   Invitation Created Successfully!
                 </h3>
                 <p className="text-xs text-slate-500">

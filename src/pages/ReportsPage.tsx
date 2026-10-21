@@ -60,26 +60,28 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
     return expenses.filter((e) => {
       if (selectedTrip !== 'all' && e.tripId !== selectedTrip) return false;
       if (selectedCategory !== 'all' && e.category?.trim() !== selectedCategory) return false;
-      if (startDate && e.date && e.date < startDate) return false;
-      if (endDate && e.date && e.date > endDate) return false;
+      const expDate = e.date ? e.date.split('T')[0] : '';
+      if (startDate && (!expDate || expDate < startDate)) return false;
+      if (endDate && (!expDate || expDate > endDate)) return false;
       return true;
     });
   }, [expenses, selectedTrip, selectedCategory, startDate, endDate]);
 
   const validExpenses = useMemo(() => {
-    return filteredExpenses.filter((e) => e.status === 'valid' && typeof e.amount === 'number');
+    return filteredExpenses.filter((e) => e.status === 'valid' && typeof e.amount === 'number' && !isNaN(e.amount));
   }, [filteredExpenses]);
 
   const incompleteExpenses = useMemo(() => {
-    return filteredExpenses.filter((e) => e.status === 'incomplete');
+    return filteredExpenses.filter((e) => e.status === 'incomplete' || e.amount === null || isNaN(e.amount as number));
   }, [filteredExpenses]);
 
   // Filtered reimbursements
   const scopedReimbursements = useMemo(() => {
     return reimbursements.filter((r) => {
       if (selectedTrip !== 'all' && r.tripId !== selectedTrip) return false;
-      if (startDate && r.date && r.date < startDate) return false;
-      if (endDate && r.date && r.date > endDate) return false;
+      const rDate = r.date ? r.date.split('T')[0] : '';
+      if (startDate && (!rDate || rDate < startDate)) return false;
+      if (endDate && (!rDate || rDate > endDate)) return false;
       return true;
     });
   }, [reimbursements, selectedTrip, startDate, endDate]);
@@ -100,7 +102,7 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
   const categoryBreakdown = useMemo(() => {
     const map = new Map<string, { amount: number; count: number }>();
     validExpenses.forEach((e) => {
-      const cat = e.category?.trim() || 'Miscellaneous';
+      const cat = e.category?.trim() || 'Uncategorized';
       const cur = map.get(cat) || { amount: 0, count: 0 };
       map.set(cat, {
         amount: cur.amount + (e.amount || 0),

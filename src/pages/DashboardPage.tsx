@@ -118,10 +118,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </div>
             <div>
               <h4 className="text-sm font-semibold">
-                {metrics.incompleteTransactions} Incomplete Record Found in Current Scope
+                {metrics.incompleteTransactions} Incomplete Record{metrics.incompleteTransactions > 1 ? 's' : ''} Found in Current Scope
               </h4>
               <p className="text-xs text-amber-800 dark:text-amber-300">
-                Row 80 (Grabbit location gurgaon) is missing an amount and is safely excluded from financial totals until reviewed.
+                {(() => {
+                  const incomplete = expenses.filter((e) => e.status === 'incomplete' || e.amount === null);
+                  if (incomplete.length === 0) return 'Incomplete records are safely excluded from financial totals until reviewed.';
+                  const names = incomplete.slice(0, 2).map((e) => e.description || 'Incomplete item').join(', ');
+                  const extra = incomplete.length > 2 ? ` and ${incomplete.length - 2} more` : '';
+                  const verb = incomplete.length > 1 ? ' are ' : ' is ';
+                  return `${names}${extra}${verb}missing an amount and safely excluded from financial totals until reviewed.`;
+                })()}
               </p>
             </div>
           </div>

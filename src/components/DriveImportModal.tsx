@@ -20,6 +20,7 @@ import {
   RefreshCw,
   Search,
 } from 'lucide-react';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface DriveImportModalProps {
   isOpen: boolean;
@@ -77,6 +78,7 @@ export const DriveImportModal: React.FC<DriveImportModalProps> = ({
   onRefreshFolder,
   isManager = false,
 }) => {
+  const { handleBackdropClick } = useModalA11y({ isOpen, onClose });
   const [activeTab, setActiveTab] = useState<'browse' | 'direct_link'>('browse');
   const [selectedFolder, setSelectedFolder] = useState<string>('all');
   const [fileSearch, setFileSearch] = useState<string>('');
@@ -340,17 +342,25 @@ export const DriveImportModal: React.FC<DriveImportModalProps> = ({
     }
   };
 
+  if (!isOpen) return null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="drive-import-title"
+      onClick={handleBackdropClick}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150"
+    >
       <div className="relative w-full max-w-4xl max-h-[92vh] flex flex-col rounded-2xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden my-4">
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800">
+        <div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800 shrink-0">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/50">
               <HardDrive className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              <h3 id="drive-import-title" className="text-base font-bold text-slate-900 dark:text-white">
                 Import Payment Proofs from Google Drive
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -360,6 +370,7 @@ export const DriveImportModal: React.FC<DriveImportModalProps> = ({
           </div>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
           >
             <X className="h-5 w-5" />

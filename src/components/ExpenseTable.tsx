@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Expense, Trip } from '../types/index';
 import { formatCurrency, formatDate } from '../utils/calculations';
 import {
@@ -24,6 +24,7 @@ interface ExpenseTableProps {
   expenses: Expense[];
   trips: Trip[];
   totalExpensesCount?: number;
+  filterKey?: string;
   onAddExpense?: () => void;
   onViewExpense: (expense: Expense) => void;
   onEditExpense: (expense: Expense) => void;
@@ -38,6 +39,7 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
   expenses,
   trips,
   totalExpensesCount,
+  filterKey,
   onAddExpense,
   onViewExpense,
   onEditExpense,
@@ -55,7 +57,7 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
 
   const tripMap = useMemo(() => new Map(trips.map((t) => [t.id, t.name])), [trips]);
 
-  // 1. Sort expenses
+  // 1. Sort expenses (deterministic & NaN-safe)
   const sortedExpenses = useMemo(() => {
     return [...expenses].sort((a, b) => {
       let comparison = 0;
@@ -68,9 +70,12 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
       } else if (sortField === 'category') {
         comparison = (a.category || '').localeCompare(b.category || '');
       } else if (sortField === 'amount') {
-        const amtA = a.amount ?? -1;
-        const amtB = b.amount ?? -1;
+        const amtA = typeof a.amount === 'number' && !isNaN(a.amount) ? a.amount : -1;
+        const amtB = typeof b.amount === 'number' && !isNaN(b.amount) ? b.amount : -1;
         comparison = amtA - amtB;
+      }
+      if (comparison === 0) {
+        comparison = (a.id || '').localeCompare(b.id || '');
       }
       return sortOrder === 'asc' ? comparison : -comparison;
     });
@@ -88,6 +93,32 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
 
   const startRecord = totalItems === 0 ? 0 : (validCurrentPage - 1) * pageSize + 1;
   const endRecord = Math.min(validCurrentPage * pageSize, totalItems);
+
+  // Reset to page 1 when filters change (filterKey changes)
+  useEffect(() => {
+    if (filterKey !== undefined) {
+      setCurrentPage(1);
+    }
+  }, [filterKey]);
+
+  // Keep currentPage valid when records are deleted (page clamping)
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
+  // Clean up selectedIds when records are deleted
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const existingIds = new Set(expenses.map((e) => e.id));
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (existingIds.has(id)) next.add(id);
+      });
+      return next.size === prev.size ? prev : next;
+    });
+  }, [expenses]);
 
   // Sorting handler
   const handleSort = (field: SortField) => {
@@ -233,6 +264,7 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
                       type="checkbox"
                       checked={isAllCurrentPageSelected}
                       onChange={handleToggleSelectAll}
+                      aria-label="Select all expenses on current page"
                       className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800"
                     />
                   </th>
@@ -313,6 +345,7 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => {}}
+                          aria-label={`Select expense: ${expense.description || expense.id}`}
                           className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800"
                         />
                       </td>
@@ -401,6 +434,7 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
                         <button
                           onClick={() => onViewExpense(expense)}
                           title="View Details"
+                          aria-label={`View details for ${expense.description || 'expense'}`}
                           className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400 transition-colors"
                         >
                           <Eye className="h-3.5 w-3.5" />
@@ -409,6 +443,7 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
                           <button
                             onClick={() => onDiscussExpense(expense)}
                             title="Discuss Expense"
+                            aria-label={`Discuss ${expense.description || 'expense'}`}
                             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-amber-600 dark:hover:bg-slate-800 dark:hover:text-amber-400 transition-colors"
                           >
                             <MessageSquare className="h-3.5 w-3.5 text-amber-500" />
@@ -419,6 +454,7 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
                             <button
                               onClick={() => onEditExpense(expense)}
                               title="Edit Expense"
+                              aria-label={`Edit ${expense.description || 'expense'}`}
                               className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-emerald-600 dark:hover:bg-slate-800 dark:hover:text-emerald-400 transition-colors"
                             >
                               <Edit2 className="h-3.5 w-3.5" />
@@ -426,6 +462,7 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
                             <button
                               onClick={() => onDeleteExpense(expense.id)}
                               title="Delete Expense"
+                              aria-label={`Delete ${expense.description || 'expense'}`}
                               className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-rose-600 dark:hover:bg-slate-800 dark:hover:text-rose-400 transition-colors"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -571,6 +608,7 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
             <span className="text-[11px]">Per page:</span>
             <select
               value={pageSize}
+              aria-label="Expenses per page"
               onChange={(e) => {
                 setPageSize(Number(e.target.value));
                 setCurrentPage(1);
@@ -589,6 +627,7 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
           <button
             onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
             disabled={validCurrentPage <= 1}
+            aria-label="Previous page"
             className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -601,6 +640,7 @@ export const ExpenseTable: React.FC<ExpenseTableProps> = ({
           <button
             onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
             disabled={validCurrentPage >= totalPages}
+            aria-label="Next page"
             className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             <ChevronRight className="h-4 w-4" />

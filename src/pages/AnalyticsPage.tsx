@@ -84,15 +84,16 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
     return expenses.filter((e) => {
       if (selectedTrip !== 'all' && e.tripId !== selectedTrip) return false;
       if (selectedCategory !== 'all' && e.category?.trim() !== selectedCategory) return false;
-      if (startDate && e.date && e.date < startDate) return false;
-      if (endDate && e.date && e.date > endDate) return false;
+      const expDate = e.date ? e.date.split('T')[0] : '';
+      if (startDate && (!expDate || expDate < startDate)) return false;
+      if (endDate && (!expDate || expDate > endDate)) return false;
       return true;
     });
   }, [expenses, selectedTrip, selectedCategory, startDate, endDate]);
 
   const validExpenses = useMemo(() => {
     return filteredExpenses.filter(
-      (e) => e.status === 'valid' && typeof e.amount === 'number' && e.amount > 0
+      (e) => e.status === 'valid' && typeof e.amount === 'number' && !isNaN(e.amount) && e.amount > 0
     );
   }, [filteredExpenses]);
 
@@ -100,8 +101,9 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
   const scopedReimbursements = useMemo(() => {
     return reimbursements.filter((r) => {
       if (selectedTrip !== 'all' && r.tripId !== selectedTrip) return false;
-      if (startDate && r.date && r.date < startDate) return false;
-      if (endDate && r.date && r.date > endDate) return false;
+      const rDate = r.date ? r.date.split('T')[0] : '';
+      if (startDate && (!rDate || rDate < startDate)) return false;
+      if (endDate && (!rDate || rDate > endDate)) return false;
       return true;
     });
   }, [reimbursements, selectedTrip, startDate, endDate]);
@@ -130,7 +132,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
   const categoryData = useMemo(() => {
     const map = new Map<string, number>();
     validExpenses.forEach((e) => {
-      const cat = e.category?.trim() || 'Miscellaneous';
+      const cat = e.category?.trim() || 'Uncategorized';
       map.set(cat, (map.get(cat) || 0) + (e.amount || 0));
     });
 

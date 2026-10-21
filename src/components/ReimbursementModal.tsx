@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Reimbursement, Trip } from '../types/index';
 import { X, DollarSign } from 'lucide-react';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface ReimbursementModalProps {
   isOpen: boolean;
@@ -19,12 +20,14 @@ export const ReimbursementModal: React.FC<ReimbursementModalProps> = ({
   activeTripId,
   reimbursementToEdit,
 }) => {
+  const { handleBackdropClick } = useModalA11y({ isOpen, onClose });
   const [date, setDate] = useState('');
   const [amount, setAmount] = useState('');
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
   const [tripId, setTripId] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -62,28 +65,42 @@ export const ReimbursementModal: React.FC<ReimbursementModalProps> = ({
       return;
     }
 
-    onSave({
-      id: reimbursementToEdit?.id,
-      date,
-      amount: parsedAmt,
-      reference: reference.trim() || 'Direct Transfer',
-      notes: notes.trim(),
-      tripId: tripId || null,
-    });
+    if (isSubmitting) return;
 
-    onClose();
+    try {
+      setIsSubmitting(true);
+      onSave({
+        id: reimbursementToEdit?.id,
+        date,
+        amount: parsedAmt,
+        reference: reference.trim() || 'Direct Transfer',
+        notes: notes.trim(),
+        tripId: tripId || null,
+      });
+      onClose();
+    } catch {
+      // Keep modal open, inputs preserved, error displayed in toast
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-      <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="reimbursement-modal-title"
+      onClick={handleBackdropClick}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto"
+    >
+      <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 my-auto">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
               <DollarSign className="h-4 w-4" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+              <h3 id="reimbursement-modal-title" className="text-sm font-bold text-slate-900 dark:text-white">
                 {reimbursementToEdit ? 'Edit Reimbursement Entry' : 'Record Reimbursement Payment'}
               </h3>
               <p className="text-[11px] text-slate-500">
@@ -93,6 +110,7 @@ export const ReimbursementModal: React.FC<ReimbursementModalProps> = ({
           </div>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
           >
             <X className="h-5 w-5" />
@@ -101,10 +119,11 @@ export const ReimbursementModal: React.FC<ReimbursementModalProps> = ({
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+            <label htmlFor="reimbursement-input-date" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
               Payment Date <span className="text-rose-500">*</span>
             </label>
             <input
+              id="reimbursement-input-date"
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
@@ -114,10 +133,11 @@ export const ReimbursementModal: React.FC<ReimbursementModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+            <label htmlFor="reimbursement-input-amount" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
               Amount Received (₹) <span className="text-rose-500">*</span>
             </label>
             <input
+              id="reimbursement-input-amount"
               type="number"
               step="any"
               min="1"
@@ -183,9 +203,10 @@ export const ReimbursementModal: React.FC<ReimbursementModalProps> = ({
             </button>
             <button
               type="submit"
-              className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+              disabled={isSubmitting}
+              className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {reimbursementToEdit ? 'Save Changes' : 'Record Reimbursement'}
+              {isSubmitting ? 'Saving...' : reimbursementToEdit ? 'Save Changes' : 'Record Reimbursement'}
             </button>
           </div>
         </form>

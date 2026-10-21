@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Trip } from '../types/index';
 import { X, Compass, Calendar, MapPin, FileText } from 'lucide-react';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface TripModalProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ export const TripModal: React.FC<TripModalProps> = ({
   onSave,
   tripToEdit,
 }) => {
+  const { handleBackdropClick } = useModalA11y({ isOpen, onClose });
   const [name, setName] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -22,6 +24,7 @@ export const TripModal: React.FC<TripModalProps> = ({
   const [description, setDescription] = useState('');
   const [isArchived, setIsArchived] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -67,36 +70,44 @@ export const TripModal: React.FC<TripModalProps> = ({
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
 
-    onSave({
-      id: tripToEdit?.id,
-      name: name.trim(),
-      startDate,
-      endDate,
-      locations: parsedLocations.length > 0 ? parsedLocations : ['Various'],
-      description: description.trim() || undefined,
-      isArchived,
-    });
+    if (isSubmitting) return;
 
-    onClose();
+    try {
+      setIsSubmitting(true);
+      onSave({
+        id: tripToEdit?.id,
+        name: name.trim(),
+        startDate,
+        endDate,
+        locations: parsedLocations.length > 0 ? parsedLocations : ['Various'],
+        description: description.trim() || undefined,
+        isArchived,
+      });
+      onClose();
+    } catch {
+      // Keep modal open, inputs preserved, error displayed in toast
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
-      />
-
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="trip-modal-title"
+      onClick={handleBackdropClick}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm transition-opacity overflow-y-auto"
+    >
       {/* Modal Dialog */}
-      <div className="relative w-full max-w-lg rounded-3xl border border-slate-200/80 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-150">
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
+      <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-3xl border border-slate-200/80 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-150 my-auto">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400">
               <Compass className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+              <h2 id="trip-modal-title" className="text-base font-bold text-slate-900 dark:text-white">
                 {tripToEdit ? 'Edit Travel / Trip' : 'Create New Trip'}
               </h2>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
@@ -106,19 +117,21 @@ export const TripModal: React.FC<TripModalProps> = ({
           </div>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
           {/* Trip Name */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+            <label htmlFor="trip-input-name" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
               Trip / Travel Name <span className="text-rose-500">*</span>
             </label>
             <input
+              id="trip-input-name"
               type="text"
               value={name}
               onChange={(e) => {
@@ -237,9 +250,10 @@ export const TripModal: React.FC<TripModalProps> = ({
             </button>
             <button
               type="submit"
-              className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors"
+              disabled={isSubmitting}
+              className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {tripToEdit ? 'Save Changes' : 'Create Trip'}
+              {isSubmitting ? 'Saving...' : tripToEdit ? 'Save Changes' : 'Create Trip'}
             </button>
           </div>
         </form>

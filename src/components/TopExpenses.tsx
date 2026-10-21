@@ -44,8 +44,16 @@ export const TopExpenses: React.FC<TopExpensesProps> = ({ expenses, onSelectExpe
           return (
             <div
               key={item.id}
+              role={onSelectExpense ? 'button' : undefined}
+              tabIndex={onSelectExpense ? 0 : undefined}
               onClick={() => onSelectExpense?.(item)}
-              className="group cursor-pointer rounded-xl p-2.5 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onSelectExpense?.(item);
+                }
+              }}
+              className="group cursor-pointer rounded-xl p-2.5 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2 min-w-0 pr-2">

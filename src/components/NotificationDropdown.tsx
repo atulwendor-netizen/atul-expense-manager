@@ -26,11 +26,18 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
         setIsOpen(false);
       }
     };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpen]);
 
@@ -45,6 +52,9 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
       <button
         onClick={() => setIsOpen(!isOpen)}
         title="Notifications"
+        aria-label={`Notifications (${unreadCount} unread)`}
+        aria-expanded={isOpen}
+        aria-haspopup="true"
         className="relative rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white transition-colors"
       >
         <Bell className="h-4 w-4" />
@@ -90,8 +100,16 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
               notifications.map((item) => (
                 <div
                   key={item.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => handleNotificationClick(item)}
-                  className={`flex items-start gap-3 p-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer transition-colors ${
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleNotificationClick(item);
+                    }
+                  }}
+                  className={`flex items-start gap-3 p-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer transition-colors focus:outline-none focus:ring-1 focus:ring-blue-500 ${
                     !item.isRead ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''
                   }`}
                 >

@@ -89,6 +89,8 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
     return Array.from(set).sort();
   }, [expenses]);
 
+  const tripMap = useMemo(() => new Map(trips.map((t) => [t.id, t.name])), [trips]);
+
   // Handle single filter change
   const handleFilterChange = <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -109,8 +111,9 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
         const matchLoc = e.location?.toLowerCase().includes(q);
         const matchNotes = e.notes?.toLowerCase().includes(q);
         const matchPay = e.paymentMethod?.toLowerCase().includes(q);
-        const matchAmt = e.amount !== null ? String(e.amount).includes(q) : false;
-        if (!matchDesc && !matchCat && !matchLoc && !matchNotes && !matchPay && !matchAmt) {
+        const matchAmt = e.amount !== null && e.amount !== undefined ? String(e.amount).includes(q) : false;
+        const matchTrip = e.tripId ? (tripMap.get(e.tripId)?.toLowerCase().includes(q) ?? false) : false;
+        if (!matchDesc && !matchCat && !matchLoc && !matchNotes && !matchPay && !matchAmt && !matchTrip) {
           return false;
         }
       }
@@ -137,30 +140,31 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
 
       // 6. Status
       if (filters.status !== 'all') {
-        if (filters.status === 'valid' && (e.status !== 'valid' || e.amount === null)) {
+        if (filters.status === 'valid' && (e.status !== 'valid' || e.amount === null || isNaN(e.amount as number))) {
           return false;
         }
-        if (filters.status === 'incomplete' && e.status !== 'incomplete' && e.amount !== null) {
+        if (filters.status === 'incomplete' && e.status !== 'incomplete' && e.amount !== null && !isNaN(e.amount as number)) {
           return false;
         }
       }
 
-      // 7. Date Range
-      if (filters.startDate && e.date && e.date < filters.startDate) {
-        return false;
+      // 7. Date Range (Inclusive: startDate <= expDate <= endDate)
+      const expDate = e.date ? e.date.split('T')[0] : '';
+      if (filters.startDate) {
+        if (!expDate || expDate < filters.startDate) return false;
       }
-      if (filters.endDate && e.date && e.date > filters.endDate) {
-        return false;
+      if (filters.endDate) {
+        if (!expDate || expDate > filters.endDate) return false;
       }
 
       return true;
     });
-  }, [expenses, filters]);
+  }, [expenses, filters, tripMap]);
 
   // Page dynamic metrics from CURRENT filtered set
   const pageMetrics = useMemo(() => {
-    const valid = filteredExpenses.filter((e) => e.status === 'valid' && typeof e.amount === 'number');
-    const incomplete = filteredExpenses.filter((e) => e.status === 'incomplete' || e.amount === null);
+    const valid = filteredExpenses.filter((e) => e.status === 'valid' && typeof e.amount === 'number' && !isNaN(e.amount));
+    const incomplete = filteredExpenses.filter((e) => e.status === 'incomplete' || e.amount === null || isNaN(e.amount as number));
     const totalAmount = valid.reduce((sum, e) => sum + (e.amount || 0), 0);
     const avgExpense = valid.length > 0 ? Math.round(totalAmount / valid.length) : 0;
 
@@ -188,18 +192,26 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
   // Confirm Single Delete
   const handleConfirmSingleDelete = () => {
     if (expenseIdToDelete) {
-      onDeleteExpense(expenseIdToDelete);
-      onNotify('success', 'Expense record deleted successfully');
-      setExpenseIdToDelete(null);
+      try {
+        onDeleteExpense(expenseIdToDelete);
+      } catch {
+        // Error notification is already handled by onDeleteExpense in App.tsx
+      } finally {
+        setExpenseIdToDelete(null);
+      }
     }
   };
 
   // Confirm Bulk Delete
   const handleConfirmBulkDelete = () => {
     if (bulkIdsToDelete && bulkIdsToDelete.length > 0) {
-      onBulkDeleteExpenses(bulkIdsToDelete);
-      onNotify('success', `Deleted ${bulkIdsToDelete.length} selected expense records`);
-      setBulkIdsToDelete(null);
+      try {
+        onBulkDeleteExpenses(bulkIdsToDelete);
+      } catch {
+        // Error notification is already handled by onBulkDeleteExpenses in App.tsx
+      } finally {
+        setBulkIdsToDelete(null);
+      }
     }
   };
 
@@ -327,6 +339,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
 
       {/* Expense Table with desktop & mobile layouts */}
       <ExpenseTable
+        filterKey={JSON.stringify(filters)}
         expenses={filteredExpenses}
         trips={trips}
         totalExpensesCount={expenses.length}

@@ -11,6 +11,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { formatFileSize, isImageFile, isPdfFile, getDriveEmbedUrl, getDriveWebLink } from '../utils/googleDrive';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface DriveFileViewerModalProps {
   file: DriveFolderFile | null;
@@ -29,6 +30,8 @@ export const DriveFileViewerModal: React.FC<DriveFileViewerModalProps> = ({
   onDeleteFile,
   isManager = false,
 }) => {
+  const { handleBackdropClick } = useModalA11y({ isOpen, onClose });
+
   if (!isOpen || !file) return null;
 
   const isImg = isImageFile(file.mimeType, file.name);
@@ -37,10 +40,15 @@ export const DriveFileViewerModal: React.FC<DriveFileViewerModalProps> = ({
   const driveEmbedUrl = getDriveEmbedUrl(file.id);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="drive-file-viewer-title"
+      onClick={handleBackdropClick}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in"
+    >
       <div
         className="flex flex-col w-full max-w-4xl max-h-[92vh] rounded-2xl bg-white shadow-2xl border border-slate-200 dark:bg-slate-900 dark:border-slate-800 overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80">
@@ -51,7 +59,7 @@ export const DriveFileViewerModal: React.FC<DriveFileViewerModalProps> = ({
               {isPdf ? <FileText className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}
             </div>
             <div className="min-w-0">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+              <h3 id="drive-file-viewer-title" className="text-sm font-bold text-slate-900 dark:text-white truncate">
                 {file.name}
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2">
@@ -83,6 +91,7 @@ export const DriveFileViewerModal: React.FC<DriveFileViewerModalProps> = ({
             </a>
             <button
               onClick={onClose}
+              aria-label="Close file viewer"
               className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
             >
               <X className="h-5 w-5" />

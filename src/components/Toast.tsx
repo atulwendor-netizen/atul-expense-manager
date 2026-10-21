@@ -14,7 +14,12 @@ interface ToastProps {
 
 export const ToastContainer: React.FC<ToastProps> = ({ toasts, onDismiss }) => {
   return (
-    <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
+    <div
+      role="region"
+      aria-live="polite"
+      aria-label="Notifications"
+      className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"
+    >
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} onDismiss={onDismiss} />
       ))}
@@ -35,6 +40,8 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
 
   return (
     <div
+      role={toast.type === 'error' ? 'alert' : 'status'}
+      aria-live={toast.type === 'error' ? 'assertive' : 'polite'}
       className={`pointer-events-auto flex items-center justify-between gap-3 rounded-2xl border p-3.5 shadow-xl backdrop-blur-md transition-all animate-in slide-in-from-bottom-3 duration-200 ${
         toast.type === 'success'
           ? 'border-emerald-200 bg-white/95 text-emerald-900 dark:border-emerald-800 dark:bg-slate-900/95 dark:text-emerald-200'
@@ -54,6 +61,7 @@ const ToastItem: React.FC<{ toast: ToastMessage; onDismiss: (id: string) => void
       </div>
       <button
         onClick={() => onDismiss(toast.id)}
+        aria-label="Dismiss notification"
         className="rounded-lg p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
       >
         <X className="h-3.5 w-3.5" />

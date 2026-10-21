@@ -23,6 +23,7 @@ import {
   MessageSquare,
   FileCheck,
 } from 'lucide-react';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface ProofComparisonModalProps {
   isOpen: boolean;
@@ -51,6 +52,7 @@ export const ProofComparisonModal: React.FC<ProofComparisonModalProps> = ({
   onDiscuss,
   isManager = false,
 }) => {
+  const { handleBackdropClick } = useModalA11y({ isOpen, onClose });
   const [reviewNotes, setReviewNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -115,17 +117,23 @@ export const ProofComparisonModal: React.FC<ProofComparisonModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="proof-comparison-title"
+      onClick={handleBackdropClick}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150"
+    >
       <div className="relative w-full max-w-5xl max-h-[92vh] flex flex-col rounded-2xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden my-4">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800">
+        <div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800 shrink-0">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-100 dark:border-purple-900/50">
               <FileCheck className="h-5 w-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                <h3 id="proof-comparison-title" className="text-base font-bold text-slate-900 dark:text-white">
                   Payment Proof & Audit Comparison
                 </h3>
                 {getStatusBadge(proof.status)}
@@ -137,6 +145,7 @@ export const ProofComparisonModal: React.FC<ProofComparisonModalProps> = ({
           </div>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
           >
             <X className="h-5 w-5" />

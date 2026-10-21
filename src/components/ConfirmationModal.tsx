@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle, Trash2, X } from 'lucide-react';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface ConfirmationModalProps {
   isOpen: boolean;
@@ -22,13 +23,23 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   onConfirm,
   onCancel,
 }) => {
+  const { handleBackdropClick } = useModalA11y({ isOpen, onClose: onCancel });
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="confirmation-modal-title"
+      aria-describedby="confirmation-modal-desc"
+      onClick={handleBackdropClick}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150"
+    >
+      <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
         <button
           onClick={onCancel}
+          aria-label="Cancel and close"
           className="absolute right-4 top-4 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
         >
           <X className="h-4 w-4" />
@@ -50,10 +61,10 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
           </div>
 
           <div className="space-y-1">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+            <h3 id="confirmation-modal-title" className="text-base font-bold text-slate-900 dark:text-white">
               {title}
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            <p id="confirmation-modal-desc" className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
               {message}
             </p>
           </div>
