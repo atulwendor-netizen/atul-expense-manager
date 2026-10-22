@@ -535,58 +535,6 @@ export const PublicAuthPortal: React.FC<PublicAuthPortalProps> = ({
                     <span>{isLoading ? 'Verifying Account...' : 'Sign In to Your Workspace'}</span>
                   </button>
 
-                  {/* Quick Access for Workspace Reviewers & Auditors */}
-                  <div className="pt-2 border-t border-slate-700/60 space-y-2">
-                    <p className="text-[11px] font-medium text-slate-400 text-center">
-                      Quick Access (1-Click Workspace Access):
-                    </p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          setEmail('atul.wendor@gmail.com');
-                          setPassword('');
-                          setIsLoading(true);
-                          try {
-                            const res = await onLogin('atul.wendor@gmail.com', '');
-                            if (res.success && res.user) {
-                              onNotify('success', `Welcome back, Atul! Loaded primary workspace with 78 records.`);
-                            }
-                          } finally {
-                            setIsLoading(false);
-                          }
-                        }}
-                        disabled={isLoading}
-                        className="flex flex-col items-center justify-center p-2 rounded-xl border border-slate-700 bg-slate-900/80 hover:bg-slate-700/60 hover:border-blue-500/50 transition-all text-center group cursor-pointer"
-                      >
-                        <span className="text-xs font-bold text-white group-hover:text-blue-400">Atul (Owner)</span>
-                        <span className="text-[10px] text-slate-400">78 records & edit</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          setEmail('manager@email.com');
-                          setPassword('');
-                          setIsLoading(true);
-                          try {
-                            const res = await onLogin('manager@email.com', '');
-                            if (res.success && res.user) {
-                              onNotify('success', `Welcome Auditor! Loaded Read-Only Audit Mode with 78 records.`);
-                            }
-                          } finally {
-                            setIsLoading(false);
-                          }
-                        }}
-                        disabled={isLoading}
-                        className="flex flex-col items-center justify-center p-2 rounded-xl border border-slate-700 bg-slate-900/80 hover:bg-slate-700/60 hover:border-emerald-500/50 transition-all text-center group cursor-pointer"
-                      >
-                        <span className="text-xs font-bold text-white group-hover:text-emerald-400">Auditor / Manager</span>
-                        <span className="text-[10px] text-slate-400">Read-only audit mode</span>
-                      </button>
-                    </div>
-                  </div>
-
                   <div className="pt-2 text-center text-xs text-slate-400">
                     Don't have an account yet?{' '}
                     <button
