@@ -34,7 +34,6 @@ import {
   FolderDown,
   ChevronDown,
   ChevronUp,
-  Lock,
   Folder,
   Trash2,
 } from 'lucide-react';
@@ -105,14 +104,30 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
   const [selectedProofForAudit, setSelectedProofForAudit] = useState<PaymentProof | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  const CANONICAL_DRIVE_FOLDER_ID = '1lYGiryrLPgbFCIerJa_H9W3bUZSMH0cO';
+  const CANONICAL_DRIVE_FOLDER_URL =
+    'https://drive.google.com/drive/folders/1lYGiryrLPgbFCIerJa_H9W3bUZSMH0cO?usp=drive_link';
+
+  const getSanitizedFolderId = (id?: string | null) => {
+    if (!id || id === 'folder-gdrive-payment-proofs-2026' || id.includes('payment-proofs')) {
+      return CANONICAL_DRIVE_FOLDER_ID;
+    }
+    return id;
+  };
+
+  const getSanitizedFolderUrl = (url?: string | null, id?: string | null) => {
+    if (!url || url.includes('payment-proofs-2026') || url.includes('folder-gdrive-payment-proofs')) {
+      const cleanId = getSanitizedFolderId(id);
+      return cleanId === CANONICAL_DRIVE_FOLDER_ID
+        ? CANONICAL_DRIVE_FOLDER_URL
+        : `https://drive.google.com/drive/folders/${cleanId}`;
+    }
+    return url;
+  };
+
   // Simple Google Drive Link Import state
   const [folderLinkInput, setFolderLinkInput] = useState<string>(() => {
-    return (
-      googleDriveConfig.folderUrl ||
-      (googleDriveConfig.folderId
-        ? `https://drive.google.com/drive/folders/${googleDriveConfig.folderId}`
-        : 'https://drive.google.com/drive/folders/folder-gdrive-payment-proofs-2026')
-    );
+    return getSanitizedFolderUrl(googleDriveConfig.folderUrl, googleDriveConfig.folderId);
   });
   const [importedFiles, setImportedFiles] = useState<DriveFolderFile[]>(() => {
     return driveFolderFiles.filter((f) => !f.id.startsWith('gdrive-file-0'));
@@ -124,7 +139,7 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
   const [serverAuthStatus, setServerAuthStatus] = useState<GoogleAuthStatus | null>(null);
   const [isAuthorizing, setIsAuthorizing] = useState<boolean>(false);
   const [embeddedFolderId, setEmbeddedFolderId] = useState<string>(() => {
-    return googleDriveConfig.folderId || 'folder-gdrive-payment-proofs-2026';
+    return getSanitizedFolderId(googleDriveConfig.folderId);
   });
 
   // Keep importedFiles synchronized with incoming driveFolderFiles (filtering demo files)
@@ -132,7 +147,14 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
     setImportedFiles(driveFolderFiles.filter((f) => !f.id.startsWith('gdrive-file-0')));
   }, [driveFolderFiles]);
 
-  // Purge legacy demo files & proofs from localStorage on mount
+  // Keep folderLinkInput & embeddedFolderId synchronized with incoming googleDriveConfig
+  useEffect(() => {
+    const cleanId = getSanitizedFolderId(googleDriveConfig.folderId);
+    setEmbeddedFolderId(cleanId);
+    setFolderLinkInput(getSanitizedFolderUrl(googleDriveConfig.folderUrl, cleanId));
+  }, [googleDriveConfig]);
+
+  // Purge legacy demo files, proofs & dummy folder links from localStorage on mount
   useEffect(() => {
     try {
       const gdriveRaw = localStorage.getItem('atul_gdrive_files');
@@ -149,6 +171,35 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
         if (Array.isArray(parsed) && parsed.some((p: any) => p.id && p.id.startsWith('proof-00'))) {
           const cleaned = parsed.filter((p: any) => !p.id || !p.id.startsWith('proof-00'));
           localStorage.setItem('atul_payment_proofs', JSON.stringify(cleaned));
+        }
+      }
+
+      // Purge legacy dummy folder config from all localStorage keys
+      const configKeys = ['atul_gdrive_config', 'atul_cloud_gdrive_config_v1'];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.endsWith('gdrive_config_v1') || key.includes('gdrive_config'))) {
+          configKeys.push(key);
+        }
+      }
+      for (const key of configKeys) {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (
+              parsed &&
+              (!parsed.folderId ||
+                parsed.folderId === 'folder-gdrive-payment-proofs-2026' ||
+                parsed.folderId.includes('payment-proofs'))
+            ) {
+              parsed.folderId = CANONICAL_DRIVE_FOLDER_ID;
+              parsed.folderUrl = CANONICAL_DRIVE_FOLDER_URL;
+              localStorage.setItem(key, JSON.stringify(parsed));
+            }
+          } catch {
+            // ignore
+          }
         }
       }
     } catch {
@@ -266,12 +317,14 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
 
       // Folder link
       setEmbeddedFolderId(parsed.id);
-      onUpdateDriveConfig({
-        folderId: parsed.id,
-        folderUrl: trimmed,
-        folderName: googleDriveConfig.folderName || 'Expense Manager Payment Proofs',
-        lastSyncedAt: new Date().toISOString(),
-      });
+      if (!isManager) {
+        onUpdateDriveConfig({
+          folderId: parsed.id,
+          folderUrl: trimmed,
+          folderName: googleDriveConfig.folderName || 'Expense Manager Payment Proofs',
+          lastSyncedAt: new Date().toISOString(),
+        });
+      }
 
       try {
         const res = await fetchGoogleDriveFolderFiles(parsed.id, googleDriveConfig);
@@ -311,7 +364,7 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
 
     try {
       const parsed = parseGoogleDriveLink(folderLinkInput);
-      const targetId = parsed?.id || googleDriveConfig.folderId || 'folder-gdrive-payment-proofs-2026';
+      const targetId = parsed?.id || getSanitizedFolderId(googleDriveConfig.folderId);
 
       const res = await fetchGoogleDriveFolderFiles(targetId, googleDriveConfig);
       if (res.success) {
@@ -583,7 +636,7 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
             <LinkIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
               type="text"
-              disabled={isManager || isImportingLink}
+              disabled={isImportingLink}
               value={folderLinkInput}
               onChange={(e) => {
                 setFolderLinkInput(e.target.value);
@@ -591,7 +644,7 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
               }}
               placeholder={
                 isManager
-                  ? 'Audit Mode: Google Drive folder link (Read-only view)'
+                  ? 'Paste Google Drive folder link or file link to audit in Live Explorer'
                   : 'Paste Google Drive folder link (e.g. https://drive.google.com/drive/folders/...) or file link'
               }
               className="w-full rounded-xl border border-slate-300/80 bg-white py-2.5 pl-10 pr-4 text-xs font-medium text-slate-900 placeholder-slate-400 shadow-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white disabled:opacity-70 disabled:cursor-not-allowed"
@@ -599,21 +652,14 @@ export const PaymentProofsPage: React.FC<PaymentProofsPageProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {!isManager ? (
-              <button
-                type="submit"
-                disabled={isImportingLink}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm shadow-blue-500/20 hover:bg-blue-700 disabled:opacity-50 transition-colors"
-              >
-                <FolderDown className={`h-4 w-4 ${isImportingLink ? 'animate-bounce' : ''}`} />
-                <span>{isImportingLink ? 'Importing...' : 'Import / View'}</span>
-              </button>
-            ) : (
-              <span className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 px-3.5 py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-                <Lock className="h-3.5 w-3.5 text-amber-500" />
-                <span>Audit Mode</span>
-              </span>
-            )}
+            <button
+              type="submit"
+              disabled={isImportingLink}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm shadow-blue-500/20 hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              <FolderDown className={`h-4 w-4 ${isImportingLink ? 'animate-bounce' : ''}`} />
+              <span>{isImportingLink ? 'Loading...' : isManager ? 'View Folder' : 'Import / View'}</span>
+            </button>
 
             <button
               type="button"

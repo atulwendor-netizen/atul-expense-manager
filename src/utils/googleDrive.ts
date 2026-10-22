@@ -357,7 +357,9 @@ export async function fetchGoogleDriveFolderFiles(
     folderId === 'folder-gdrive-payment-proofs-2026' ||
     folderId.includes('payment-proofs') ||
     folderId.includes('service-visit') ||
-    folderId === config.folderId
+    folderId === config.folderId ||
+    folderId === '1lYGiryrLPgbFCIerJa_H9W3bUZSMH0cO' ||
+    (config.folderUrl && config.folderUrl.includes(folderId))
   ) {
     const customKey = `gdrive_custom_files_${folderId}`;
     let customFiles: DriveFolderFile[] = [];

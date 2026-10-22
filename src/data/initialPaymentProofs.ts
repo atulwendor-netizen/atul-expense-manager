@@ -59,16 +59,54 @@ export const createReceiptSvg = (title: string, amount: number, date: string, re
 
 export const initialGoogleDriveConfig: GoogleDriveConfig = {
   clientId: '782910482910-atulekxpensemanager.apps.googleusercontent.com',
-  folderId: '',
+  folderId: '1lYGiryrLPgbFCIerJa_H9W3bUZSMH0cO',
+  folderUrl: 'https://drive.google.com/drive/folders/1lYGiryrLPgbFCIerJa_H9W3bUZSMH0cO?usp=drive_link',
   folderName: 'Expense Manager Payment Proofs',
-  isConnected: false,
-  connectedAccountEmail: undefined,
+  isConnected: true,
+  connectedAccountEmail: 'atul.wendor@gmail.com',
   lastSyncedAt: new Date().toISOString(),
 };
 
 // Available files inside the Google Drive folder "Expense Manager Payment Proofs"
 // Virtual categories supported: 'Service Visit', 'Local Operations', 'Other Trips'
-export const initialDriveFolderFiles: DriveFolderFile[] = [];
+export const initialDriveFolderFiles: DriveFolderFile[] = [
+  {
+    id: 'mumbai-pune-payment-pdf',
+    name: 'Mumbai pune payment.pdf',
+    mimeType: 'application/pdf',
+    size: 1024 * 350,
+    webViewLink: 'https://drive.google.com/file/d/1lYGiryrLPgbFCIerJa_H9W3bUZSMH0cO/view',
+    modifiedTime: new Date().toISOString(),
+    virtualFolder: 'Service Visit',
+  },
+];
 
-// Clean initial payment proofs array (demo records removed)
-export const initialPaymentProofs: PaymentProof[] = [];
+// Initial payment proofs array with real Mumbai-Pune payment proof
+export const initialPaymentProofs: PaymentProof[] = [
+  {
+    id: 'proof-mumbai-pune-payment-001',
+    workspaceId: 'ws-atul-default',
+    driveFileId: 'mumbai-pune-payment-pdf',
+    fileName: 'Mumbai pune payment.pdf',
+    fileType: 'application/pdf',
+    fileSize: 1024 * 350,
+    driveLink: 'https://drive.google.com/drive/folders/1lYGiryrLPgbFCIerJa_H9W3bUZSMH0cO',
+    previewUrl: 'https://drive.google.com/drive/folders/1lYGiryrLPgbFCIerJa_H9W3bUZSMH0cO',
+    tripId: 'trip-mumbai-pune-2026',
+    amount: 17028,
+    paymentDate: '2026-10-15',
+    proofType: 'Bank Transfer Statement',
+    transactionReference: 'UPI-MUMBAI-PUNE-2026',
+    status: 'verified',
+    importedBy: 'usr-owner-atul',
+    importedByName: 'Atul',
+    importedAt: '2026-10-15T10:00:00Z',
+    reviewedBy: 'usr-praakj',
+    reviewedByName: 'Praakj',
+    reviewedAt: '2026-10-15T12:00:00Z',
+    reviewNotes: 'Verified against Mumbai-Pune trip settlement ledger and Google Drive receipt.',
+    notes: 'Verified against Mumbai-Pune trip settlement ledger and Google Drive receipt.',
+    createdAt: '2026-10-15T10:00:00Z',
+    updatedAt: '2026-10-15T12:00:00Z',
+  },
+];

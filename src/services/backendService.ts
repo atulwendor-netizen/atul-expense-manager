@@ -417,20 +417,48 @@ class BackendService {
       }
     }
 
+    const invitations = this.getStoredInvitationsUnsafe();
+    const invitation = invitations.find((i) => i.email.toLowerCase() === cleanEmail && i.status !== 'revoked');
+    const members = this.getStoredMembersUnsafe();
+    const existingMember = members.find((m) => m.email.toLowerCase() === cleanEmail && m.status !== 'revoked');
+
+    const assignedRole: UserRole = invitation?.role || existingMember?.role || 'owner';
+    const assignedWorkspace = invitation?.workspaceId || existingMember?.workspaceId || (assignedRole === 'manager' ? DEFAULT_WORKSPACE.id : `ws-${uid}`);
+
     const passwordHash = hashPasswordSync(password);
     const newUser: RegisteredUser = {
       id: uid,
       name: cleanName,
       email: cleanEmail,
       passwordHash,
-      role: 'owner', // Each registered user is the owner of their personal account and records
+      role: assignedRole,
       status: 'active',
-      workspaceId: `ws-${uid}`,
+      workspaceId: assignedWorkspace,
       createdAt: new Date().toISOString(),
       lastLoginAt: new Date().toISOString(),
     };
 
     this.saveRegisteredUsers([...registeredUsers, newUser]);
+
+    if (invitation) {
+      const updatedInvs = invitations.map((inv) =>
+        inv.id === invitation.id ? { ...inv, status: 'accepted' as const } : inv
+      );
+      this.setItem(STORAGE_KEYS.INVITATIONS, JSON.stringify(updatedInvs));
+      if (!existingMember) {
+        const newMember: WorkspaceMember = {
+          id: `mem-${Date.now()}`,
+          workspaceId: assignedWorkspace,
+          userId: uid,
+          name: cleanName,
+          email: cleanEmail,
+          role: assignedRole,
+          status: 'active',
+          joinedAt: new Date().toISOString(),
+        };
+        this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify([...members, newMember]));
+      }
+    }
 
     // Explicitly initialize personal empty data partitions for new user
     this.setItem(`atul_user_${uid}_expenses_v2`, JSON.stringify([]));
@@ -627,13 +655,21 @@ class BackendService {
         registeredUsers.map((u) => (u.id === regUser.id ? updatedUser : u))
       );
 
+      const members = this.getStoredMembersUnsafe();
+      const member = members.find((m) => m.email.toLowerCase() === cleanEmail && m.status !== 'revoked');
+      const invitations = this.getStoredInvitationsUnsafe();
+      const invitation = invitations.find((i) => i.email.toLowerCase() === cleanEmail && i.status !== 'revoked');
+
+      const resolvedRole = member?.role || invitation?.role || updatedUser.role;
+      const resolvedWorkspace = member?.workspaceId || invitation?.workspaceId || (resolvedRole === 'manager' ? DEFAULT_WORKSPACE.id : updatedUser.workspaceId);
+
       const userProfile: UserProfile = {
         id: updatedUser.id,
         name: updatedUser.name,
         email: updatedUser.email,
-        role: updatedUser.role,
-        status: updatedUser.status,
-        workspaceId: updatedUser.workspaceId,
+        role: resolvedRole,
+        status: member?.status || updatedUser.status,
+        workspaceId: resolvedWorkspace,
         createdAt: updatedUser.createdAt,
         lastLoginAt: updatedUser.lastLoginAt,
       };
@@ -1558,7 +1594,8 @@ class BackendService {
 
     const isDefaultWorkspace =
       this.currentUser.workspaceId === DEFAULT_WORKSPACE.id ||
-      isOwnerEmail(this.currentUser.email);
+      isOwnerEmail(this.currentUser.email) ||
+      this.currentUser.role === 'manager';
 
     if (isDefaultWorkspace) {
       const ownerKey = `atul_user_${INITIAL_OWNER.id}_expenses_v2`;
@@ -2013,7 +2050,8 @@ class BackendService {
 
     const isDefaultWorkspace =
       this.currentUser.workspaceId === DEFAULT_WORKSPACE.id ||
-      isOwnerEmail(this.currentUser.email);
+      isOwnerEmail(this.currentUser.email) ||
+      this.currentUser.role === 'manager';
 
     if (isDefaultWorkspace) {
       const ownerKey = `atul_user_${INITIAL_OWNER.id}_reimbursements_v1`;
@@ -2286,7 +2324,8 @@ class BackendService {
 
     const isDefaultWorkspace =
       this.currentUser.workspaceId === DEFAULT_WORKSPACE.id ||
-      isOwnerEmail(this.currentUser.email);
+      isOwnerEmail(this.currentUser.email) ||
+      this.currentUser.role === 'manager';
 
     if (isDefaultWorkspace) {
       const ownerKey = `atul_user_${INITIAL_OWNER.id}_trips_v2`;
@@ -3290,15 +3329,17 @@ class BackendService {
 
     const isDefaultWorkspace =
       this.currentUser.workspaceId === DEFAULT_WORKSPACE.id ||
-      isOwnerEmail(this.currentUser.email);
+      isOwnerEmail(this.currentUser.email) ||
+      this.currentUser.role === 'manager';
 
     let proofs: PaymentProof[] = [];
     if (isDefaultWorkspace) {
       const ownerKey = `atul_user_${INITIAL_OWNER.id}_payment_proofs_v1`;
-      let raw = this.getItem(ownerKey);
-      if (!raw) {
-        raw = this.getItem(STORAGE_KEYS.PAYMENT_PROOFS);
-      }
+      let raw =
+        this.getItem(ownerKey) ||
+        this.getItem(STORAGE_KEYS.PAYMENT_PROOFS) ||
+        this.getItem('atul_payment_proofs') ||
+        this.getItem(this.getUserStorageKey('payment_proofs_v1'));
       if (!raw) {
         proofs = [...initialPaymentProofs];
         this.setItem(ownerKey, JSON.stringify(proofs));
@@ -3487,9 +3528,15 @@ class BackendService {
     };
 
     const updated = [newProof, ...proofs];
-    this.setItem(this.getUserStorageKey('payment_proofs_v1'), JSON.stringify(updated));
-    if (isOwnerEmail(this.currentUser.email)) {
+    const isWorkspaceUser =
+      this.currentUser.workspaceId === DEFAULT_WORKSPACE.id ||
+      isOwnerEmail(this.currentUser.email) ||
+      this.currentUser.role === 'manager';
+
+    if (isWorkspaceUser) {
+      this.setItem(`atul_user_${INITIAL_OWNER.id}_payment_proofs_v1`, JSON.stringify(updated));
       this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(updated));
+      this.setItem('atul_payment_proofs', JSON.stringify(updated));
     }
 
     // If an expense is associated, update expense receipt metadata
@@ -3560,8 +3607,15 @@ class BackendService {
 
     const merged = [...newItems, ...existingProofs];
     this.setItem(this.getUserStorageKey('payment_proofs_v1'), JSON.stringify(merged));
-    if (isOwnerEmail(this.currentUser.email)) {
+    const isWorkspaceUser =
+      this.currentUser.workspaceId === DEFAULT_WORKSPACE.id ||
+      isOwnerEmail(this.currentUser.email) ||
+      this.currentUser.role === 'manager';
+
+    if (isWorkspaceUser) {
+      this.setItem(`atul_user_${INITIAL_OWNER.id}_payment_proofs_v1`, JSON.stringify(merged));
       this.setItem(STORAGE_KEYS.PAYMENT_PROOFS, JSON.stringify(merged));
+      this.setItem('atul_payment_proofs', JSON.stringify(merged));
     }
 
     // Update any linked expenses
@@ -3855,23 +3909,58 @@ class BackendService {
   getGoogleDriveConfig(): GoogleDriveConfig {
     if (!this.isAuthenticated()) return initialGoogleDriveConfig;
     this.enforceActiveMember();
-    const key = this.getUserStorageKey('gdrive_config_v1');
-    const raw = this.getItem(key);
-    if (!raw) {
-      if (isOwnerEmail(this.currentUser.email)) {
-        const legacy = this.getItem(STORAGE_KEYS.GDRIVE_CONFIG);
-        if (legacy) {
-          try {
-            return JSON.parse(legacy);
-          } catch {
-            // fallback
+
+    const isWorkspaceUser =
+      this.currentUser.workspaceId === DEFAULT_WORKSPACE.id ||
+      isOwnerEmail(this.currentUser.email) ||
+      this.currentUser.role === 'manager';
+
+    if (isWorkspaceUser) {
+      const ownerKey = `atul_user_${INITIAL_OWNER.id}_gdrive_config_v1`;
+      const raw =
+        this.getItem(ownerKey) ||
+        this.getItem(STORAGE_KEYS.GDRIVE_CONFIG) ||
+        this.getItem('atul_gdrive_config') ||
+        this.getItem(this.getUserStorageKey('gdrive_config_v1'));
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            if (
+              !parsed.folderId ||
+              parsed.folderId === 'folder-gdrive-payment-proofs-2026' ||
+              parsed.folderId.includes('payment-proofs')
+            ) {
+              parsed.folderId = '1lYGiryrLPgbFCIerJa_H9W3bUZSMH0cO';
+              parsed.folderUrl =
+                'https://drive.google.com/drive/folders/1lYGiryrLPgbFCIerJa_H9W3bUZSMH0cO?usp=drive_link';
+              this.setItem(ownerKey, JSON.stringify(parsed));
+              this.setItem(STORAGE_KEYS.GDRIVE_CONFIG, JSON.stringify(parsed));
+              this.setItem('atul_gdrive_config', JSON.stringify(parsed));
+            }
+            return parsed;
           }
+        } catch {
+          // fallback
         }
       }
       return initialGoogleDriveConfig;
     }
+
+    const key = this.getUserStorageKey('gdrive_config_v1');
+    const raw = this.getItem(key);
+    if (!raw) return initialGoogleDriveConfig;
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (
+        parsed &&
+        (!parsed.folderId ||
+          parsed.folderId === 'folder-gdrive-payment-proofs-2026' ||
+          parsed.folderId.includes('payment-proofs'))
+      ) {
+        return initialGoogleDriveConfig;
+      }
+      return parsed;
     } catch {
       return initialGoogleDriveConfig;
     }
@@ -3886,9 +3975,9 @@ class BackendService {
       lastSyncedAt: new Date().toISOString(),
     };
     this.setItem(this.getUserStorageKey('gdrive_config_v1'), JSON.stringify(updated));
-    if (isOwnerEmail(this.currentUser.email)) {
-      this.setItem(STORAGE_KEYS.GDRIVE_CONFIG, JSON.stringify(updated));
-    }
+    this.setItem(`atul_user_${INITIAL_OWNER.id}_gdrive_config_v1`, JSON.stringify(updated));
+    this.setItem(STORAGE_KEYS.GDRIVE_CONFIG, JSON.stringify(updated));
+    this.setItem('atul_gdrive_config', JSON.stringify(updated));
 
     this.recordAuditLog({
       action: 'Updated Google Drive Configuration',
@@ -3905,35 +3994,44 @@ class BackendService {
   getDriveFolderFiles(virtualFolder?: string): DriveFolderFile[] {
     if (!this.isAuthenticated()) return [];
     this.enforceActiveMember();
-    const key = this.getUserStorageKey('gdrive_files_v1');
-    const raw = this.getItem(key);
+
+    const isWorkspaceUser =
+      this.currentUser.workspaceId === DEFAULT_WORKSPACE.id ||
+      isOwnerEmail(this.currentUser.email) ||
+      this.currentUser.role === 'manager';
+
     let allFiles: DriveFolderFile[] = [];
-    if (!raw) {
-      if (isOwnerEmail(this.currentUser.email)) {
-        allFiles = [...initialDriveFolderFiles];
-        const legacy = this.getItem(STORAGE_KEYS.GDRIVE_FILES);
-        if (legacy) {
-          try {
-            const stored: DriveFolderFile[] = JSON.parse(legacy);
-            if (Array.isArray(stored)) {
-              const map = new Map<string, DriveFolderFile>();
-              [...initialDriveFolderFiles, ...stored].forEach((f) => map.set(f.id, f));
-              allFiles = Array.from(map.values());
-            }
-          } catch {
-            allFiles = [...initialDriveFolderFiles];
+
+    if (isWorkspaceUser) {
+      const ownerKey = `atul_user_${INITIAL_OWNER.id}_gdrive_files_v1`;
+      const raw =
+        this.getItem(ownerKey) ||
+        this.getItem(STORAGE_KEYS.GDRIVE_FILES) ||
+        this.getItem('atul_gdrive_files') ||
+        this.getItem(this.getUserStorageKey('gdrive_files_v1'));
+      if (raw) {
+        try {
+          const stored: DriveFolderFile[] = JSON.parse(raw);
+          if (Array.isArray(stored) && stored.length > 0) {
+            allFiles = stored;
           }
+        } catch {
+          allFiles = [];
         }
-      } else {
-        this.setItem(key, JSON.stringify([]));
-        return [];
+      }
+      if (allFiles.length === 0) {
+        allFiles = [...initialDriveFolderFiles];
       }
     } else {
-      try {
-        allFiles = JSON.parse(raw);
-        if (!Array.isArray(allFiles)) allFiles = [];
-      } catch {
-        allFiles = [];
+      const key = this.getUserStorageKey('gdrive_files_v1');
+      const raw = this.getItem(key);
+      if (raw) {
+        try {
+          allFiles = JSON.parse(raw);
+          if (!Array.isArray(allFiles)) allFiles = [];
+        } catch {
+          allFiles = [];
+        }
       }
     }
 
@@ -3950,10 +4048,13 @@ class BackendService {
     ]);
     const beforeFileCount = allFiles.length;
     allFiles = allFiles.filter((f) => !demoDriveIds.has(f.id) && !f.id.startsWith('gdrive-file-0'));
-    if (allFiles.length !== beforeFileCount || !raw) {
-      this.setItem(key, JSON.stringify(allFiles));
-      if (isOwnerEmail(this.currentUser.email)) {
+    if (allFiles.length !== beforeFileCount) {
+      if (isWorkspaceUser) {
+        this.setItem(`atul_user_${INITIAL_OWNER.id}_gdrive_files_v1`, JSON.stringify(allFiles));
         this.setItem(STORAGE_KEYS.GDRIVE_FILES, JSON.stringify(allFiles));
+        this.setItem('atul_gdrive_files', JSON.stringify(allFiles));
+      } else {
+        this.setItem(this.getUserStorageKey('gdrive_files_v1'), JSON.stringify(allFiles));
       }
     }
 
