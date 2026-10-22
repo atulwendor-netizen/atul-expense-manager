@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   UserProfile,
   UserRole,
@@ -67,6 +68,9 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
+    const hasAnyModal = Boolean(isInviteModalOpen || selectedUserForDetails || createdInviteModal);
+    if (!hasAnyModal) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (isInviteModalOpen) setIsInviteModalOpen(false);
@@ -74,10 +78,10 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
         if (createdInviteModal) setCreatedInviteModal(null);
       }
     };
-    if (isInviteModalOpen || selectedUserForDetails || createdInviteModal) {
-      window.addEventListener('keydown', handleKeyDown);
-      lockBodyScroll();
-    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    lockBodyScroll();
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       unlockBodyScroll();
@@ -698,7 +702,7 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
       </div>
 
       {/* Invite Manager Modal */}
-      {isInviteModalOpen && (
+      {isInviteModalOpen && typeof document !== 'undefined' && createPortal(
         <div
           role="dialog"
           aria-modal="true"
@@ -706,9 +710,9 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
           onClick={(e) => {
             if (e.target === e.currentTarget) setIsInviteModalOpen(false);
           }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150 overflow-y-auto"
         >
-          <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6">
+          <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 my-auto">
             <h3 id="invite-manager-title" className="text-sm font-bold text-slate-900 dark:text-white mb-1">
               Invite Manager / Auditor
             </h3>
@@ -768,11 +772,12 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* User Details Modal */}
-      {selectedUserForDetails && (
+      {selectedUserForDetails && typeof document !== 'undefined' && createPortal(
         <div
           role="dialog"
           aria-modal="true"
@@ -780,9 +785,9 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
           onClick={(e) => {
             if (e.target === e.currentTarget) setSelectedUserForDetails(null);
           }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150 overflow-y-auto"
         >
-          <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 my-auto">
             <h3 id="user-details-title" className="text-sm font-bold text-slate-900 dark:text-white mb-2">
               User Profile Details
             </h3>
@@ -869,11 +874,12 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Invitation Created & Share Modal */}
-      {createdInviteModal && (
+      {createdInviteModal && typeof document !== 'undefined' && createPortal(
         <div
           role="dialog"
           aria-modal="true"
@@ -881,9 +887,9 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
           onClick={(e) => {
             if (e.target === e.currentTarget) setCreatedInviteModal(null);
           }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150 overflow-y-auto"
         >
-          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4">
+          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4 my-auto">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400">
                 <CheckCircle2 className="h-5 w-5" />
@@ -942,7 +948,8 @@ export const UserManagementSection: React.FC<UserManagementSectionProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

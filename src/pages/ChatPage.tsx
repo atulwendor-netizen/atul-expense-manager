@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { useModalA11y } from '../hooks/useModalA11y';
 import {
   Conversation,
   ChatMessage,
@@ -73,6 +75,11 @@ export const ChatPage: React.FC<ChatPageProps> = ({
   const [isNewGroupModalOpen, setIsNewGroupModalOpen] = useState(false);
   const [newGroupTitle, setNewGroupTitle] = useState('');
   const [mobileShowActiveChat, setMobileShowActiveChat] = useState(Boolean(activeConversationId));
+
+  const { handleBackdropClick: handleNewGroupBackdropClick } = useModalA11y({
+    isOpen: isNewGroupModalOpen,
+    onClose: () => setIsNewGroupModalOpen(false),
+  });
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -709,50 +716,62 @@ export const ChatPage: React.FC<ChatPageProps> = ({
       </div>
 
       {/* New Group Modal */}
-      {isNewGroupModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-2">
-              Start New Group Conversation
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-              Create a dedicated channel for team review or financial reconciliation.
-            </p>
+      {isNewGroupModalOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-group-modal-title"
+            onClick={handleNewGroupBackdropClick}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150 overflow-y-auto"
+          >
+            <div
+              className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 my-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 id="new-group-modal-title" className="text-sm font-bold text-slate-900 dark:text-white mb-2">
+                Start New Group Conversation
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                Create a dedicated channel for team review or financial reconciliation.
+              </p>
 
-            <form onSubmit={handleCreateGroup} className="space-y-4">
-              <div>
-                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                  Conversation Title
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newGroupTitle}
-                  onChange={(e) => setNewGroupTitle(e.target.value)}
-                  placeholder="e.g. Q3 Mumbai Lodging Audit"
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                />
-              </div>
+              <form onSubmit={handleCreateGroup} className="space-y-4">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    Conversation Title
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newGroupTitle}
+                    onChange={(e) => setNewGroupTitle(e.target.value)}
+                    placeholder="e.g. Q3 Mumbai Lodging Audit"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsNewGroupModalOpen(false)}
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-blue-700"
-                >
-                  Create Channel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsNewGroupModalOpen(false)}
+                    className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-blue-700"
+                  >
+                    Create Channel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

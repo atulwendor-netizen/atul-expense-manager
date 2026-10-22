@@ -95,7 +95,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         role="navigation"
         aria-label="Main sidebar navigation"
         className={clsx(
-          'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200/80 bg-white shadow-sm transition-transform duration-300 ease-in-out dark:border-slate-800/80 dark:bg-slate-900 lg:static lg:sticky lg:top-0 lg:h-screen lg:self-start lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200/80 bg-white shadow-sm transition-transform duration-300 ease-in-out dark:border-slate-800/80 dark:bg-slate-900 lg:sticky lg:top-0 lg:h-screen lg:self-start lg:translate-x-0',
           isOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >

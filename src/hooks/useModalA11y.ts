@@ -33,6 +33,13 @@ export function unlockBodyScroll(): void {
   }
 }
 
+export function forceUnlockBodyScroll(): void {
+  if (typeof document === 'undefined') return;
+  activeLockCount = 0;
+  previousBodyOverflow = '';
+  document.body.style.overflow = '';
+}
+
 export function useModalA11y({
   isOpen,
   onClose,

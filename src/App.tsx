@@ -21,6 +21,7 @@ import { AccountProfileModal } from './components/AccountProfileModal';
 import { SignInModal } from './components/SignInModal';
 import { PublicAuthPortal } from './components/PublicAuthPortal';
 import { ToastContainer, ToastMessage } from './components/Toast';
+import { forceUnlockBodyScroll } from './hooks/useModalA11y';
 import { Expense, Reimbursement, Trip } from './types/index';
 import { calculateDashboardMetrics } from './utils/calculations';
 import { Ban, LogIn } from 'lucide-react';
@@ -129,6 +130,14 @@ export function App() {
     }
   }, [isManager, activeTab, setActiveTab, addToast]);
 
+  // Ensure any tab switch immediately frees body scroll locks and scrolls cleanly to the top of the viewport
+  useEffect(() => {
+    forceUnlockBodyScroll();
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+    }
+  }, [activeTab]);
+
   const handleSelectTab = useCallback((tab: string) => {
     if (isManager && tab === 'settings') {
       addToast('error', 'Access Denied: Settings and administrative configuration are restricted to the Account Owner.');
@@ -136,6 +145,8 @@ export function App() {
     }
     setActiveTab(tab);
     setSearchQuery('');
+    // Safely unlock any residual body scroll lock from previous modals/views
+    forceUnlockBodyScroll();
     // Ensure section navigation scrolls to the top of the selected section cleanly
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });

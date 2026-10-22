@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Trip } from '../types/index';
 import { X, Compass, Calendar, MapPin, FileText } from 'lucide-react';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -91,7 +92,7 @@ export const TripModal: React.FC<TripModalProps> = ({
     }
   };
 
-  return (
+  const modalContent = (
     <div
       role="dialog"
       aria-modal="true"
@@ -260,4 +261,10 @@ export const TripModal: React.FC<TripModalProps> = ({
       </div>
     </div>
   );
+
+  if (typeof document !== 'undefined') {
+    return createPortal(modalContent, document.body);
+  }
+
+  return modalContent;
 };
