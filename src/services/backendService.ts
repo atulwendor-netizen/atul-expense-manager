@@ -598,7 +598,8 @@ class BackendService {
 
       // Ensure owner baseline data exists under owner namespace
       const ownerKey = `atul_user_${INITIAL_OWNER.id}_expenses_v2`;
-      if (!this.getItem(ownerKey)) {
+      const existingOwnerRaw = this.getItem(ownerKey);
+      if (!existingOwnerRaw) {
         const rawCloud = this.getItem(STORAGE_KEYS.EXPENSES);
         let ownerExpenses = initialExpenses;
         if (rawCloud) {
@@ -617,6 +618,27 @@ class BackendService {
           workspaceId: DEFAULT_WORKSPACE.id,
         }));
         this.setItem(ownerKey, JSON.stringify(tagged));
+      } else {
+        try {
+          const parsed = JSON.parse(existingOwnerRaw);
+          if (Array.isArray(parsed)) {
+            const ids = new Set(parsed.map((e: any) => e.id));
+            const deleted = this.getDeletedExpenseIds();
+            let needsHealing = false;
+            for (const seed of initialExpenses) {
+              if (!ids.has(seed.id) && !deleted.has(seed.id)) {
+                parsed.push({ ...seed, ownerId: INITIAL_OWNER.id, workspaceId: DEFAULT_WORKSPACE.id });
+                needsHealing = true;
+              }
+            }
+            if (needsHealing) {
+              this.setItem(ownerKey, JSON.stringify(parsed));
+              this.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(parsed));
+            }
+          }
+        } catch {
+          // ignore
+        }
       }
 
       const ownerReimbKey = `atul_user_${INITIAL_OWNER.id}_reimbursements_v1`;
@@ -2160,6 +2182,29 @@ class BackendService {
     }
   }
 
+  private getDeletedExpenseIds(): Set<string> {
+    const raw = this.getItem('atul_deleted_expense_ids_v1');
+    if (!raw) return new Set();
+    try {
+      const parsed = JSON.parse(raw);
+      return new Set(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  private recordDeletedExpenseId(id: string): void {
+    const deleted = this.getDeletedExpenseIds();
+    deleted.add(id);
+    this.setItem('atul_deleted_expense_ids_v1', JSON.stringify(Array.from(deleted)));
+  }
+
+  private recordDeletedExpenseIds(ids: string[]): void {
+    const deleted = this.getDeletedExpenseIds();
+    ids.forEach((id) => deleted.add(id));
+    this.setItem('atul_deleted_expense_ids_v1', JSON.stringify(Array.from(deleted)));
+  }
+
   // --- EXPENSES (AUTHORITATIVE CLOUD PERSISTENCE & BASELINE PRESERVATION) ---
   getExpenses(): Expense[] {
     if (!this.isAuthenticated()) {
@@ -2194,7 +2239,19 @@ class BackendService {
         }
       }
 
+      // Self-healing: ensure all canonical baseline records (e.g. exp-075) exist unless explicitly deleted
+      const existingIds = new Set(baseList.map((e) => e.id));
+      const deletedIds = this.getDeletedExpenseIds();
       let modified = false;
+
+      for (const seed of initialExpenses) {
+        if (!existingIds.has(seed.id) && !deletedIds.has(seed.id)) {
+          baseList.push(seed);
+          existingIds.add(seed.id);
+          modified = true;
+        }
+      }
+
       const expenses = baseList.map((exp) => {
         let changed = false;
         const e = { ...exp };
@@ -2534,6 +2591,7 @@ class BackendService {
     }
 
     const filtered = expenses.filter((e) => (e.id || '').trim() !== cleanId);
+    this.recordDeletedExpenseId(cleanId);
     this.saveExpenses(filtered);
     receiptStorage.deleteReceipt(cleanId, this.currentUser.workspaceId).catch(() => {});
 
@@ -2603,6 +2661,7 @@ class BackendService {
     }
 
     const remaining = expenses.filter((e) => !idSet.has((e.id || '').trim()));
+    this.recordDeletedExpenseIds(cleanIds);
     this.saveExpenses(remaining);
     cleanIds.forEach((id) => receiptStorage.deleteReceipt(id, this.currentUser.workspaceId).catch(() => {}));
 
@@ -3301,6 +3360,7 @@ class BackendService {
 
   resetAllData(): void {
     this.enforceOwnerPermission('Reset Database');
+    this.removeItem('atul_deleted_expense_ids_v1');
     if (isOwnerEmail(this.currentUser.email)) {
       const seededExpenses = initialExpenses.map((e) => ({
         ...e,

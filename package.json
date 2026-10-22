@@ -9,7 +9,7 @@
     "build": "npm run build:api && tsc && vite build",
     "preview": "vite preview",
     "test:invite": "node scripts/verify-invitation-signup.js",
-    "test": "node scripts/verify-rbac-production.js && node scripts/verify-calculator-features.js && node scripts/verify-scrolling-fix.js && node scripts/verify-financial-calculations.js && node scripts/verify-trip-reimbursement-calculations.js && node scripts/verify-delete-confirmation-modal.js && node scripts/verify-receipt-storage-and-verification.js && node scripts/verify-invitation-signup.js"
+    "test": "node scripts/verify-rbac-production.js && node scripts/verify-calculator-features.js && node scripts/verify-scrolling-fix.js && node scripts/verify-financial-calculations.js && node scripts/verify-trip-reimbursement-calculations.js && node scripts/verify-delete-confirmation-modal.js && node scripts/verify-receipt-storage-and-verification.js && node scripts/verify-invitation-signup.js && node scripts/verify-incomplete-expense-parity.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",

@@ -599,8 +599,10 @@ export function App() {
           {/* Tab 2: Expenses Management & Receipt Verification */}
           {(activeTab === 'expenses' || activeTab === 'receipt-verification') && (
             <ExpensesPage
-              expenses={tripFilteredExpenses}
+              expenses={expenses}
               trips={trips}
+              activeTripId={activeTripId}
+              onSelectTrip={setActiveTripId}
               initialSubView={activeTab === 'receipt-verification' ? 'verification' : 'all'}
               onAddExpense={handleOpenAddExpense}
               onEditExpense={handleEditExpense}

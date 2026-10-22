@@ -27,6 +27,8 @@ import {
 interface ExpensesPageProps {
   expenses: Expense[];
   trips: Trip[];
+  activeTripId?: string;
+  onSelectTrip?: (tripId: string) => void;
   initialSubView?: 'all' | 'verification';
   onAddExpense: () => void;
   onEditExpense: (expense: Expense) => void;
@@ -53,6 +55,8 @@ const initialFilterState: FilterState = {
 export const ExpensesPage: React.FC<ExpensesPageProps> = ({
   expenses,
   trips,
+  activeTripId = 'all',
+  onSelectTrip,
   initialSubView = 'all',
   onAddExpense,
   onEditExpense,
@@ -71,7 +75,19 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
       setActiveSubView(initialSubView);
     }
   }, [initialSubView]);
-  const [filters, setFilters] = useState<FilterState>(initialFilterState);
+
+  const [filters, setFilters] = useState<FilterState>(() => ({
+    ...initialFilterState,
+    tripId: activeTripId || 'all',
+  }));
+
+  // Synchronize trip filter if activeTripId changes externally
+  React.useEffect(() => {
+    if (activeTripId) {
+      setFilters((prev) => (prev.tripId !== activeTripId ? { ...prev, tripId: activeTripId } : prev));
+    }
+  }, [activeTripId]);
+
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
 
   // Modals state
@@ -131,10 +147,16 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
   // Handle single filter change
   const handleFilterChange = <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
+    if (key === 'tripId' && onSelectTrip && typeof value === 'string') {
+      onSelectTrip(value);
+    }
   };
 
   const handleClearFilters = () => {
     setFilters(initialFilterState);
+    if (onSelectTrip) {
+      onSelectTrip('all');
+    }
   };
 
   // MULTI-FILTERING LOGIC (AND logic)
