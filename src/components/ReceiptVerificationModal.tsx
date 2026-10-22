@@ -58,6 +58,22 @@ export const ReceiptVerificationModal: React.FC<ReceiptVerificationModalProps> =
   const [resolvedReceiptUrl, setResolvedReceiptUrl] = useState<string | null>(null);
   const [isLoadingReceipt, setIsLoadingReceipt] = useState<boolean>(false);
   const [fileLoadError, setFileLoadError] = useState<string | null>(null);
+  const [verificationFeedback, setVerificationFeedback] = useState<{
+    show: boolean;
+    type: 'success' | 'info';
+    title: string;
+    message: string;
+    expenseId: string;
+  } | null>(null);
+
+  // Auto-dismiss verification popup after 3.5 seconds
+  useEffect(() => {
+    if (!verificationFeedback) return;
+    const timer = setTimeout(() => {
+      setVerificationFeedback(null);
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, [verificationFeedback]);
 
   // Current expense index and navigation
   const currentIndex = useMemo(() => {
@@ -158,13 +174,56 @@ export const ReceiptVerificationModal: React.FC<ReceiptVerificationModalProps> =
   const handleAction = async (status: ReceiptVerificationStatus) => {
     try {
       setIsSubmitting(true);
-      onVerify(expense.id, status, reviewNotes.trim() || undefined);
-      if (onNotify) {
-        if (status === 'verified') {
-          onNotify('success', `Receipt for "${expense.description || expense.id}" verified successfully.`);
-        } else if (status === 'verification_pending') {
-          onNotify('info', `Marked "${expense.description || expense.id}" as Pending Review.`);
-        } else {
+      const currentExpense = expense;
+      const currentId = currentExpense.id;
+      const desc = currentExpense.description || currentId;
+      const amount = currentExpense.amount;
+      const nextIdx = currentIndex + 1;
+      const willHaveNext = nextIdx < expenses.length;
+      const nextExpense = willHaveNext ? expenses[nextIdx] : null;
+
+      onVerify(currentId, status, reviewNotes.trim() || undefined);
+
+      if (status === 'verified') {
+        // 1. Show immediate In-Modal Confirmation Popup
+        setVerificationFeedback({
+          show: true,
+          type: 'success',
+          title: 'Receipt Verified Successfully!',
+          message: willHaveNext
+            ? `Expense #${currentId} (${formatCurrency(amount || 0)}) verified. Auto-advancing to record ${nextIdx + 1} of ${expenses.length}...`
+            : `Expense #${currentId} (${formatCurrency(amount || 0)}) verified. Reached the end of the audit queue!`,
+          expenseId: currentId,
+        });
+
+        // 2. Global Toast Notification Popup (guaranteed top level z-[9999])
+        if (onNotify) {
+          onNotify(
+            'success',
+            willHaveNext
+              ? `Receipt for "${desc}" verified! Moving to next record (${nextIdx + 1}/${expenses.length})...`
+              : `Receipt for "${desc}" verified! All ${expenses.length} records reviewed.`
+          );
+        }
+
+        // 3. Automatic Next Expense Advance
+        if (willHaveNext && nextExpense) {
+          onSelectExpense(nextExpense);
+        }
+      } else if (status === 'verification_pending') {
+        setVerificationFeedback({
+          show: true,
+          type: 'info',
+          title: 'Marked as Pending Review',
+          message: `Expense #${currentId} flagged for auditor follow-up.`,
+          expenseId: currentId,
+        });
+
+        if (onNotify) {
+          onNotify('info', `Marked "${desc}" as Pending Review.`);
+        }
+      } else {
+        if (onNotify) {
           onNotify('info', `Updated verification status to: ${status}.`);
         }
       }
@@ -200,6 +259,43 @@ export const ReceiptVerificationModal: React.FC<ReceiptVerificationModalProps> =
       className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-150"
     >
       <div className="relative w-full max-w-6xl max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col rounded-2xl bg-white shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden my-auto">
+        {/* In-Modal Floating Verification Notification Popup */}
+        {verificationFeedback && (
+          <div
+            role="status"
+            aria-live="polite"
+            className={`absolute top-3.5 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3 text-white shadow-2xl border backdrop-blur-md animate-in fade-in slide-in-from-top-3 duration-200 max-w-lg w-[92%] sm:w-auto ${
+              verificationFeedback.type === 'success'
+                ? 'bg-emerald-600/95 border-emerald-400/50 shadow-emerald-950/50'
+                : 'bg-amber-600/95 border-amber-400/50 shadow-amber-950/50'
+            }`}
+          >
+            <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl bg-white/20 shrink-0">
+              {verificationFeedback.type === 'success' ? (
+                <CheckCircle2 className="h-5 w-5 text-white animate-bounce" />
+              ) : (
+                <Clock className="h-5 w-5 text-white" />
+              )}
+            </div>
+            <div className="min-w-0 pr-1 text-left">
+              <p className="text-[11px] sm:text-xs font-black tracking-wide uppercase text-white/90">
+                {verificationFeedback.title}
+              </p>
+              <p className="text-[11px] sm:text-xs font-semibold text-white truncate max-w-xs sm:max-w-md">
+                {verificationFeedback.message}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setVerificationFeedback(null)}
+              aria-label="Dismiss popup"
+              className="ml-auto rounded-lg p-1 text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
         {/* Top Header */}
         <div className="flex items-center justify-between border-b border-slate-100 px-4 sm:px-6 py-3.5 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900 z-10">
           <div className="flex items-center gap-3 min-w-0">
@@ -559,7 +655,11 @@ export const ReceiptVerificationModal: React.FC<ReceiptVerificationModalProps> =
                   className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 transition-colors"
                 >
                   <CheckCircle2 className="h-4 w-4" />
-                  <span>{verificationStatus === 'verified' ? 'Update Verification' : 'Mark Verified'}</span>
+                  <span>
+                    {verificationStatus === 'verified'
+                      ? (hasNext ? 'Verified (Next →)' : 'Verified (Done)')
+                      : (hasNext ? 'Mark Verified & Next →' : 'Mark Verified')}
+                  </span>
                 </button>
 
                 <button
@@ -585,7 +685,7 @@ export const ReceiptVerificationModal: React.FC<ReceiptVerificationModalProps> =
               )}
 
               {/* Next Navigation Shortcut */}
-              {hasNext && (
+              {hasNext ? (
                 <button
                   type="button"
                   onClick={handleNext}
@@ -594,6 +694,11 @@ export const ReceiptVerificationModal: React.FC<ReceiptVerificationModalProps> =
                   <span>Verify Next Expense</span>
                   <ChevronRight className="h-3.5 w-3.5" />
                 </button>
+              ) : (
+                <div className="flex items-center justify-center gap-1.5 py-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 mt-1 bg-emerald-50 dark:bg-emerald-950/40 rounded-lg border border-emerald-200 dark:border-emerald-800/60">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  <span>All {expenses.length} records reviewed</span>
+                </div>
               )}
             </div>
           </div>

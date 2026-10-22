@@ -81,6 +81,18 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
   const [expenseIdToDelete, setExpenseIdToDelete] = useState<string | null>(null);
   const [bulkIdsToDelete, setBulkIdsToDelete] = useState<string[] | null>(null);
 
+  // Synchronize verification modal selection and list with latest expenses
+  const currentVerificationExpenses = useMemo(() => {
+    if (verificationExpensesList.length === 0) return expenses;
+    const expenseMap = new Map(expenses.map((e) => [e.id, e]));
+    return verificationExpensesList.map((item) => expenseMap.get(item.id) || item);
+  }, [verificationExpensesList, expenses]);
+
+  const currentSelectedExpense = useMemo(() => {
+    if (!selectedExpenseForVerification) return null;
+    return expenses.find((e) => e.id === selectedExpenseForVerification.id) || selectedExpenseForVerification;
+  }, [selectedExpenseForVerification, expenses]);
+
   // Pending verification count (unreviewed or pending review)
   const pendingVerificationCount = useMemo(() => {
     return expenses.filter((e) => {
@@ -479,8 +491,8 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({
       <ReceiptVerificationModal
         isOpen={Boolean(selectedExpenseForVerification)}
         onClose={() => setSelectedExpenseForVerification(null)}
-        expense={selectedExpenseForVerification}
-        expenses={verificationExpensesList.length > 0 ? verificationExpensesList : expenses}
+        expense={currentSelectedExpense}
+        expenses={currentVerificationExpenses}
         trips={trips}
         onVerify={(id, status, notes) => {
           if (onVerifyExpense) {
