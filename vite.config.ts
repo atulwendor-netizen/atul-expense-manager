@@ -7,6 +7,9 @@ import disconnectHandler from './api/auth/google/disconnect';
 import filesHandler from './api/drive/files';
 import sendResetLinkHandler from './api/auth/send-reset-link';
 import verifyResetTokenHandler from './api/auth/verify-reset-token';
+import sendInviteHandler from './api/auth/send-invite';
+import validateInviteHandler from './api/auth/validate-invite';
+import acceptInviteHandler from './api/auth/accept-invite';
 
 function googleDriveDevApiPlugin(): Plugin {
   return {
@@ -17,6 +20,18 @@ function googleDriveDevApiPlugin(): Plugin {
         const pathname = url.split('?')[0];
 
         try {
+          if (pathname === '/api/auth/send-invite') {
+            await sendInviteHandler(req, res);
+            return;
+          }
+          if (pathname === '/api/auth/validate-invite') {
+            await validateInviteHandler(req, res);
+            return;
+          }
+          if (pathname === '/api/auth/accept-invite') {
+            await acceptInviteHandler(req, res);
+            return;
+          }
           if (pathname === '/api/auth/send-reset-link') {
             await sendResetLinkHandler(req, res);
             return;

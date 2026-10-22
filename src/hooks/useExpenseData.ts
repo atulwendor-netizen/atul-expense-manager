@@ -392,12 +392,33 @@ export function useExpenseData() {
     setDriveFolderFiles([]);
   }, []);
 
-  // User Management
+  // User Management & Invitations
   const inviteManager = useCallback((email: string, role: UserRole) => {
     const inv = backend.inviteManager(email, role);
     refreshState();
     return inv;
   }, [refreshState]);
+
+  const validateInvitation = useCallback(async (token: string, email?: string) => {
+    return await backend.validateInvitation(token, email);
+  }, []);
+
+  const acceptInvitation = useCallback(
+    async (params: {
+      token: string;
+      email?: string;
+      password?: string;
+      name?: string;
+    }) => {
+      const res = await backend.acceptInvitation(params);
+      if (res.success && res.user) {
+        setCurrentUser(res.user);
+        refreshState();
+      }
+      return res;
+    },
+    [refreshState]
+  );
 
   const revokeUserAccess = useCallback((userId: string) => {
     backend.revokeUserAccess(userId);
@@ -680,6 +701,8 @@ export function useExpenseData() {
     members,
     invitations,
     inviteManager,
+    validateInvitation,
+    acceptInvitation,
     revokeUserAccess,
     reactivateUserAccess,
     changeUserRole,

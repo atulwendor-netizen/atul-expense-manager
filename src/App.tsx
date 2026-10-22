@@ -24,7 +24,8 @@ import { ToastContainer, ToastMessage } from './components/Toast';
 import { forceUnlockBodyScroll } from './hooks/useModalA11y';
 import { Expense, Reimbursement, Trip } from './types/index';
 import { calculateDashboardMetrics } from './utils/calculations';
-import { Ban, LogIn } from 'lucide-react';
+import { Ban, LogIn, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { supabaseIsInviteCallback } from './services/supabase';
 
 export function App() {
   const {
@@ -41,6 +42,8 @@ export function App() {
     members,
     invitations,
     inviteManager,
+    validateInvitation,
+    acceptInvitation,
     revokeUserAccess,
     reactivateUserAccess,
     changeUserRole,
@@ -110,6 +113,13 @@ export function App() {
   const [tripToEdit, setTripToEdit] = useState<Trip | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isSignInModalOpen, setIsSignInModalOpen] = useState(false);
+  const [pendingInviteModal, setPendingInviteModal] = useState<{
+    email: string;
+    role: string;
+    token: string;
+    isMismatch: boolean;
+    currentEmail: string;
+  } | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Toast notification helper
@@ -158,7 +168,7 @@ export function App() {
     setIsProfileModalOpen(false);
   }, [logout]);
 
-  // Handle Universal Master Link (/login, /portal, /access, ?portal=..., ?login=...) and direct invitation link parameters
+  // Handle Universal Master Link and direct invitation link parameters
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -166,6 +176,36 @@ export function App() {
       const params = new URLSearchParams(window.location.search);
       const inviteEmail = params.get('email');
       const roleParam = params.get('role');
+      const modeParam = params.get('mode');
+      const tokenParam = params.get('token');
+      const sbInvite = supabaseIsInviteCallback();
+
+      const isInviteFlow = modeParam === 'invite' || Boolean(tokenParam && modeParam !== 'resetPassword') || sbInvite.isInvite;
+
+      // When unauthenticated, PublicAuthPortal will handle the invitation directly
+      if (isInviteFlow) {
+        if (!isAuthenticated) {
+          return;
+        }
+
+        // When user is ALREADY authenticated:
+        const targetEmail = (inviteEmail || sbInvite.email || '').trim().toLowerCase();
+        const currentEmail = (currentUser?.email || '').trim().toLowerCase();
+        const targetRole = roleParam || 'manager';
+        const targetToken = tokenParam || sbInvite.token || '';
+
+        if (targetEmail) {
+          const isMismatch = targetEmail !== currentEmail;
+          setPendingInviteModal({
+            email: targetEmail,
+            role: targetRole,
+            token: targetToken,
+            isMismatch,
+            currentEmail,
+          });
+        }
+        return;
+      }
 
       const isMasterPortalRoute =
         path === '/login' ||
@@ -187,7 +227,7 @@ export function App() {
     } catch {
       // Fallback
     }
-  }, [loginWithCredentials, addToast]);
+  }, [isAuthenticated, currentUser, loginWithCredentials, addToast]);
 
   // Global search filter for Dashboard
   const searchedExpenses = useMemo(() => {
@@ -451,6 +491,12 @@ export function App() {
           }}
           onResetPassword={async (email, newPassword, token, expires, oobCode) => {
             return await resetPassword(email, newPassword, token, expires, oobCode);
+          }}
+          onValidateInvitation={async (token, email) => {
+            return await validateInvitation(token, email);
+          }}
+          onAcceptInvitation={async (params) => {
+            return await acceptInvitation(params);
           }}
           onNotify={addToast}
           isDarkMode={isDarkMode}
@@ -786,6 +832,131 @@ export function App() {
         onNotify={addToast}
         isMandatory={!isAuthenticated}
       />
+
+      {/* Authenticated Workspace Invitation Prompt Modal */}
+      {pendingInviteModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/75 backdrop-blur-md animate-in fade-in"
+        >
+          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4">
+            {pendingInviteModal.isMismatch ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">
+                    <AlertCircle className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Wrong Account Signed In
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Email Mismatch Notice
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300 space-y-1.5 leading-relaxed">
+                  <p>
+                    You are currently signed in as <strong>{pendingInviteModal.currentEmail}</strong>.
+                  </p>
+                  <p>
+                    However, this workspace invitation was sent to <strong>{pendingInviteModal.email}</strong>.
+                  </p>
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                    To accept this invitation, please sign out and sign in with the invited email address.
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPendingInviteModal(null);
+                      if (typeof window !== 'undefined') {
+                        window.history.replaceState({}, document.title, '/');
+                      }
+                    }}
+                    className="w-full sm:w-auto rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    Stay Signed In as {pendingInviteModal.currentEmail}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPendingInviteModal(null);
+                      handleSignOut();
+                    }}
+                    className="w-full sm:w-auto rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700"
+                  >
+                    Sign Out & Switch Account
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
+                    <CheckCircle2 className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Accept Workspace Invitation
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Collaborate on Atul Expense Manager
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  You are signed in as <strong>{pendingInviteModal.currentEmail}</strong>. Atul has invited you to collaborate on this workspace as{' '}
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400 uppercase">
+                    {pendingInviteModal.role}
+                  </span>.
+                </p>
+
+                <div className="flex flex-col sm:flex-row items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPendingInviteModal(null);
+                      if (typeof window !== 'undefined') {
+                        window.history.replaceState({}, document.title, '/');
+                      }
+                    }}
+                    className="w-full sm:w-auto rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    Dismiss
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const res = await acceptInvitation({
+                        token: pendingInviteModal.token,
+                        email: pendingInviteModal.email,
+                      });
+                      if (res.success) {
+                        addToast('success', `Invitation accepted! Joined as ${pendingInviteModal.role.toUpperCase()}.`);
+                        setPendingInviteModal(null);
+                        if (typeof window !== 'undefined') {
+                          window.history.replaceState({}, document.title, '/');
+                        }
+                      } else {
+                        addToast('error', res.error || 'Failed to accept invitation.');
+                      }
+                    }}
+                    className="w-full sm:w-auto rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 shadow-sm"
+                  >
+                    Accept & Open Workspace
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Toast Notification Container */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />

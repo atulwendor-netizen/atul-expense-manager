@@ -28,7 +28,22 @@ import {
   initialGoogleDriveConfig,
 } from '../data/initialPaymentProofs';
 import { hashPasswordSync } from '../utils/hash';
-import { createClientResetToken, verifyClientResetToken } from '../utils/token';
+import {
+  createClientResetToken,
+  verifyClientResetToken,
+  createClientInvitationToken,
+  verifyClientInvitationToken,
+} from '../utils/token';
+import {
+  isSupabaseConfigured,
+  supabaseSignIn,
+  supabaseSignUp,
+  supabaseUpdatePassword,
+  supabaseCreateInvitation,
+  supabaseGetInvitation,
+  supabaseAcceptInvitation,
+  supabaseUpsertProfile,
+} from './supabase';
 import {
   isFirebaseConfigured,
   getFirebaseAuth,
@@ -190,7 +205,10 @@ class BackendService {
   }
 
   private initSession(): void {
-    const saved = this.getItem(STORAGE_KEYS.CURRENT_USER);
+    let saved = this.getItem(STORAGE_KEYS.CURRENT_USER);
+    if (!saved) {
+      saved = this.getItem('atul_expense_manager_current_user_v1');
+    }
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -315,7 +333,13 @@ class BackendService {
 
   // Safe internal lookup of invitations prior to full session authentication
   private getStoredInvitationsUnsafe(): WorkspaceInvitation[] {
-    const raw = this.getItem(STORAGE_KEYS.INVITATIONS);
+    let raw = this.getItem(`atul_user_${INITIAL_OWNER.id}_invitations_v1`);
+    if (!raw) {
+      raw = this.getItem(STORAGE_KEYS.INVITATIONS);
+    }
+    if (!raw) {
+      raw = this.getItem('atul_expense_manager_invitations_v1');
+    }
     if (!raw) return [];
     try {
       const list = JSON.parse(raw);
@@ -363,6 +387,7 @@ class BackendService {
     const target = role === 'owner' ? INITIAL_OWNER : INITIAL_MANAGER;
     this.currentUser = { ...target, lastLoginAt: new Date().toISOString() };
     this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(this.currentUser));
+    this.setItem('atul_expense_manager_current_user_v1', JSON.stringify(this.currentUser));
     return this.currentUser;
   }
 
@@ -417,6 +442,18 @@ class BackendService {
       }
     }
 
+    // Supabase Authentication sync if configured
+    if (isSupabaseConfigured()) {
+      try {
+        const supaRes = await supabaseSignUp(cleanEmail, password, cleanName, 'manager');
+        if (supaRes.user?.id) {
+          uid = supaRes.user.id;
+        }
+      } catch (supaErr) {
+        console.warn('Supabase sign-up warning:', supaErr);
+      }
+    }
+
     const invitations = this.getStoredInvitationsUnsafe();
     const invitation = invitations.find((i) => i.email.toLowerCase() === cleanEmail && i.status !== 'revoked');
     const members = this.getStoredMembersUnsafe();
@@ -424,6 +461,23 @@ class BackendService {
 
     const assignedRole: UserRole = invitation?.role || existingMember?.role || 'owner';
     const assignedWorkspace = invitation?.workspaceId || existingMember?.workspaceId || (assignedRole === 'manager' ? DEFAULT_WORKSPACE.id : `ws-${uid}`);
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabaseUpsertProfile({
+          id: uid,
+          email: cleanEmail,
+          name: cleanName,
+          role: assignedRole,
+          workspaceId: assignedWorkspace,
+        });
+        if (invitation?.token) {
+          await supabaseAcceptInvitation(invitation.token, uid, assignedWorkspace, assignedRole);
+        }
+      } catch (err) {
+        console.warn('Supabase profile upsert warning:', err);
+      }
+    }
 
     const passwordHash = hashPasswordSync(password);
     const newUser: RegisteredUser = {
@@ -445,6 +499,8 @@ class BackendService {
         inv.id === invitation.id ? { ...inv, status: 'accepted' as const } : inv
       );
       this.setItem(STORAGE_KEYS.INVITATIONS, JSON.stringify(updatedInvs));
+      this.setItem(`atul_user_${INITIAL_OWNER.id}_invitations_v1`, JSON.stringify(updatedInvs));
+
       if (!existingMember) {
         const newMember: WorkspaceMember = {
           id: `mem-${Date.now()}`,
@@ -456,7 +512,9 @@ class BackendService {
           status: 'active',
           joinedAt: new Date().toISOString(),
         };
-        this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify([...members, newMember]));
+        const updatedMembers = [...members, newMember];
+        this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updatedMembers));
+        this.setItem(`atul_user_${INITIAL_OWNER.id}_members_v1`, JSON.stringify(updatedMembers));
       }
     }
 
@@ -475,11 +533,11 @@ class BackendService {
       JSON.stringify([
         {
           id: `mem-${uid}`,
-          workspaceId: `ws-${uid}`,
+          workspaceId: assignedWorkspace,
           userId: uid,
           name: cleanName,
           email: cleanEmail,
-          role: 'owner',
+          role: assignedRole,
           status: 'active',
           joinedAt: new Date().toISOString(),
         },
@@ -500,6 +558,7 @@ class BackendService {
 
     this.currentUser = userProfile;
     this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(userProfile));
+    this.setItem('atul_expense_manager_current_user_v1', JSON.stringify(userProfile));
 
     this.recordAuditLog({
       action: 'Account Registration',
@@ -515,7 +574,7 @@ class BackendService {
   async loginWithCredentials(
     email: string,
     password?: string
-  ): Promise<{ success: boolean; user?: UserProfile; error?: string }> {
+  ): Promise<{ success: boolean; user?: UserProfile; error?: string; hasPendingInvitation?: boolean }> {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) {
       return { success: false, error: 'Please enter your account email address.' };
@@ -583,7 +642,59 @@ class BackendService {
       return { success: true, user: INITIAL_OWNER };
     }
 
-    // 2. Firebase Authentication (if configured)
+    // 2. Supabase Authentication (if configured)
+    if (isSupabaseConfigured() && password) {
+      try {
+        const supaRes = await supabaseSignIn(cleanEmail, password);
+        if (supaRes.success && supaRes.user) {
+          const uid = supaRes.user.id;
+          const registeredUsers = this.getRegisteredUsers();
+          let user = registeredUsers.find((u) => u.id === uid || u.email.toLowerCase() === cleanEmail);
+          const members = this.getStoredMembersUnsafe();
+          const member = members.find((m) => m.email.toLowerCase() === cleanEmail && m.status !== 'revoked');
+          const invitations = this.getStoredInvitationsUnsafe();
+          const invitation = invitations.find((i) => i.email.toLowerCase() === cleanEmail && i.status !== 'revoked');
+
+          const resolvedRole: UserRole = member?.role || invitation?.role || (supaRes.user.user_metadata?.role as UserRole) || 'manager';
+          const resolvedWorkspace = member?.workspaceId || invitation?.workspaceId || (resolvedRole === 'manager' ? DEFAULT_WORKSPACE.id : `ws-${uid}`);
+
+          if (!user) {
+            user = {
+              id: uid,
+              name: supaRes.user.user_metadata?.full_name || cleanEmail.split('@')[0],
+              email: cleanEmail,
+              passwordHash: hashPasswordSync(password),
+              role: resolvedRole,
+              status: 'active',
+              workspaceId: resolvedWorkspace,
+              createdAt: new Date().toISOString(),
+              lastLoginAt: new Date().toISOString(),
+            };
+            this.saveRegisteredUsers([...registeredUsers, user]);
+          }
+
+          const userProfile: UserProfile = {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: resolvedRole,
+            status: user.status,
+            workspaceId: resolvedWorkspace,
+            createdAt: user.createdAt,
+            lastLoginAt: new Date().toISOString(),
+          };
+          this.currentUser = userProfile;
+          this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(userProfile));
+          return { success: true, user: userProfile };
+        }
+      } catch (err: any) {
+        if (err?.message?.includes('Invalid login credentials')) {
+          return { success: false, error: 'Incorrect email or password. Please try again.' };
+        }
+      }
+    }
+
+    // 2.b Firebase Authentication (if configured)
     if (isFirebaseConfigured() && password) {
       try {
         const auth = getFirebaseAuth();
@@ -674,8 +785,56 @@ class BackendService {
         lastLoginAt: updatedUser.lastLoginAt,
       };
 
+      if (invitation && invitation.status === 'pending') {
+        const storedInvs = this.getStoredInvitationsUnsafe();
+        const updatedInvs = storedInvs.map((inv) =>
+          inv.email.toLowerCase() === cleanEmail ? { ...inv, status: 'accepted' as const } : inv
+        );
+        this.setItem(STORAGE_KEYS.INVITATIONS, JSON.stringify(updatedInvs));
+        this.setItem(`atul_user_${INITIAL_OWNER.id}_invitations_v1`, JSON.stringify(updatedInvs));
+
+        // Create or activate Workspace Member
+        const currentMembers = this.getStoredMembersUnsafe();
+        const mIdx = currentMembers.findIndex((m) => m.email.toLowerCase() === cleanEmail);
+        let updatedMembers: WorkspaceMember[];
+        if (mIdx >= 0) {
+          updatedMembers = currentMembers.map((m, idx) =>
+            idx === mIdx ? { ...m, role: resolvedRole, status: 'active' as const, workspaceId: resolvedWorkspace } : m
+          );
+        } else {
+          const newMember: WorkspaceMember = {
+            id: `mem-${Date.now()}`,
+            workspaceId: resolvedWorkspace,
+            userId: regUser.id,
+            name: regUser.name,
+            email: cleanEmail,
+            role: resolvedRole,
+            status: 'active',
+            joinedAt: new Date().toISOString(),
+          };
+          updatedMembers = [...currentMembers, newMember];
+        }
+        this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updatedMembers));
+        this.setItem(`atul_user_${INITIAL_OWNER.id}_members_v1`, JSON.stringify(updatedMembers));
+        this.setItem(`atul_user_${regUser.id}_members_v1`, JSON.stringify(updatedMembers));
+
+        if (isSupabaseConfigured()) {
+          supabaseAcceptInvitation(invitation.token, regUser.id, resolvedWorkspace, resolvedRole).catch(() => {});
+          supabaseUpsertProfile({ id: regUser.id, email: cleanEmail, name: regUser.name, role: resolvedRole, workspaceId: resolvedWorkspace }).catch(() => {});
+        }
+
+        this.recordAuditLog({
+          action: 'Accepted Invitation',
+          recordType: 'invitation',
+          recordId: invitation.token,
+          previousValue: 'pending',
+          newValue: `${cleanEmail} accepted invitation as ${resolvedRole.toUpperCase()} upon signing in`,
+        });
+      }
+
       this.currentUser = userProfile;
       this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(userProfile));
+      this.setItem('atul_expense_manager_current_user_v1', JSON.stringify(userProfile));
       return { success: true, user: userProfile };
     }
 
@@ -706,10 +865,11 @@ class BackendService {
       };
       this.currentUser = user;
       this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
+      this.setItem('atul_expense_manager_current_user_v1', JSON.stringify(user));
       return { success: true, user };
     }
 
-    // 5. Invitations check (activate pending invitation)
+    // 5. Invitations check
     const invitations = this.getStoredInvitationsUnsafe();
     const invitation = invitations.find((i) => i.email.toLowerCase() === cleanEmail);
     if (invitation) {
@@ -719,43 +879,34 @@ class BackendService {
           error: 'Access Denied: Your invitation has been revoked by the workspace Owner.',
         };
       }
-      const nameFromEmail = cleanEmail.split('@')[0];
-      const capitalized = nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
-      const newMember: WorkspaceMember = {
-        id: `mem-${Date.now()}`,
-        workspaceId: DEFAULT_WORKSPACE.id,
-        userId: `usr-${Date.now()}`,
-        name: capitalized,
-        email: cleanEmail,
-        role: invitation.role,
-        status: 'active',
-        joinedAt: new Date().toISOString(),
-      };
-      this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify([...members, newMember]));
-
-      const updatedInvs = invitations.map((inv) =>
-        inv.id === invitation.id ? { ...inv, status: 'accepted' as const } : inv
-      );
-      this.setItem(STORAGE_KEYS.INVITATIONS, JSON.stringify(updatedInvs));
-
-      const user: UserProfile = {
-        id: newMember.userId,
-        name: newMember.name,
-        email: newMember.email,
-        role: newMember.role,
-        status: newMember.status,
-        workspaceId: newMember.workspaceId,
-        createdAt: newMember.joinedAt,
-        lastLoginAt: new Date().toISOString(),
-      };
-      this.currentUser = user;
-      this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
-      return { success: true, user };
+      if (invitation.status === 'pending') {
+        return {
+          success: false,
+          hasPendingInvitation: true,
+          error: 'You have a pending workspace invitation! Please accept your invitation and set your password to activate your account.',
+        };
+      }
     }
 
     // 6. Default demo manager alias
     if (cleanEmail === INITIAL_MANAGER.email.toLowerCase() || cleanEmail === 'manager') {
       return { success: true, user: this.switchUser('manager') };
+    }
+
+    // 7. Check Supabase for pending invitation if configured
+    if (isSupabaseConfigured()) {
+      try {
+        const { data: supaInv } = await supabaseGetInvitation(cleanEmail);
+        if (supaInv && supaInv.status === 'pending') {
+          return {
+            success: false,
+            hasPendingInvitation: true,
+            error: 'You have a pending workspace invitation! Please accept your invitation and set your password to activate your account.',
+          };
+        }
+      } catch {
+        // ignore
+      }
     }
 
     return {
@@ -1010,6 +1161,7 @@ class BackendService {
     }
     this.currentUser = GUEST_USER;
     this.removeItem(STORAGE_KEYS.CURRENT_USER);
+    this.removeItem('atul_expense_manager_current_user_v1');
   }
 
   // Helper to obtain master portal access link
@@ -1199,20 +1351,39 @@ class BackendService {
     const invitations = this.getInvitations();
     const existing = invitations.find((i) => i.email.toLowerCase() === cleanEmail && i.status === 'pending');
     if (existing) {
+      if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+        const origin = window.location?.origin || '';
+        const targetUrl = origin ? `${origin}/api/auth/send-invite` : '/api/auth/send-invite';
+        fetch(targetUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: cleanEmail,
+            role: existing.role || role,
+            workspaceId: existing.workspaceId || DEFAULT_WORKSPACE.id,
+            inviterName: this.currentUser.name || 'Atul',
+            inviterEmail: this.currentUser.email || 'Atul.wendor@gmail.com',
+          }),
+        }).catch(() => {});
+      }
       return existing;
     }
 
+    const expiresAtMs = Date.now() + 7 * 24 * 60 * 60 * 1000;
+    const workspaceId = this.currentUser.workspaceId || DEFAULT_WORKSPACE.id;
+    const token = createClientInvitationToken(cleanEmail, role, workspaceId, expiresAtMs);
+
     const newInvitation: WorkspaceInvitation = {
       id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      workspaceId: this.currentUser.workspaceId || DEFAULT_WORKSPACE.id,
+      workspaceId,
       email: cleanEmail,
       role,
-      token: `tok-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`,
+      token,
       status: 'pending',
       invitedBy: this.currentUser.id,
       invitedByName: this.currentUser.name,
       createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      expiresAt: new Date(expiresAtMs).toISOString(),
     };
 
     const updatedInvitations = [newInvitation, ...invitations];
@@ -1221,27 +1392,41 @@ class BackendService {
       this.setItem(STORAGE_KEYS.INVITATIONS, JSON.stringify(updatedInvitations));
     }
 
-    // Also register member record as active or pending in current user's workspace
-    const members = this.getWorkspaceMembers();
-    const existingMember = members.find((m) => m.email.toLowerCase() === cleanEmail);
-    if (!existingMember) {
-      const nameFromEmail = cleanEmail.split('@')[0];
-      const capitalized = nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
-      const newMember: WorkspaceMember = {
-        id: `mem-${Date.now()}`,
-        workspaceId: this.currentUser.workspaceId || DEFAULT_WORKSPACE.id,
-        userId: `usr-${Date.now()}`,
-        name: capitalized,
+    // Supabase background sync if configured
+    if (isSupabaseConfigured()) {
+      supabaseCreateInvitation({
+        workspaceId,
         email: cleanEmail,
         role,
-        status: 'active',
-        joinedAt: new Date().toISOString(),
-      };
-      const updatedMembers = [...members, newMember];
-      this.setItem(this.getUserStorageKey('members_v1'), JSON.stringify(updatedMembers));
-      if (isOwnerEmail(this.currentUser.email)) {
-        this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updatedMembers));
+        token,
+        invitedBy: this.currentUser.id,
+        expiresAt: newInvitation.expiresAt,
+      }).catch((err) => {
+        console.warn('Supabase create invitation warning:', err);
+      });
+    }
+
+    // Background Google Sheets-style email dispatch via serverless API
+    try {
+      if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+        const origin = window.location?.origin || '';
+        const targetUrl = origin ? `${origin}/api/auth/send-invite` : '/api/auth/send-invite';
+        fetch(targetUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: cleanEmail,
+            role,
+            workspaceId,
+            inviterName: this.currentUser.name || 'Atul',
+            inviterEmail: this.currentUser.email || 'Atul.wendor@gmail.com',
+          }),
+        }).catch((err) => {
+          console.warn('Auto send-invite notification warning:', err);
+        });
       }
+    } catch {
+      // offline fallback
     }
 
     this.recordAuditLog({
@@ -1286,6 +1471,396 @@ class BackendService {
     } catch {
       return [];
     }
+  }
+
+  async validateInvitation(
+    token: string,
+    email?: string
+  ): Promise<{
+    valid: boolean;
+    invitation?: {
+      email: string;
+      role: UserRole;
+      workspaceId: string;
+      expiresAt: string;
+      status?: 'pending' | 'accepted' | 'revoked' | 'expired';
+    };
+    error?: string;
+  }> {
+    const cleanToken = (token || '').trim();
+    if (!cleanToken) {
+      return { valid: false, error: 'No invitation token provided.' };
+    }
+    const cleanEmail = (email || '').trim().toLowerCase();
+
+    // 1. Try serverless backend API route (/api/auth/validate-invite)
+    try {
+      if (typeof fetch !== 'undefined') {
+        const res = await fetch('/api/auth/validate-invite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: cleanToken, email: cleanEmail || undefined }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.valid && data.invitation) {
+            return {
+              valid: true,
+              invitation: data.invitation,
+            };
+          } else if (data && data.error) {
+            return { valid: false, error: data.error };
+          }
+        }
+      }
+    } catch {
+      // Offline / client fallback
+    }
+
+    // 2. Try Supabase if configured
+    if (isSupabaseConfigured()) {
+      try {
+        const { data: supaInv, error: supaErr } = await supabaseGetInvitation(cleanToken);
+        if (supaInv && !supaErr) {
+          if (supaInv.status === 'revoked') {
+            return {
+              valid: false,
+              error: 'Access Denied: This invitation has been revoked by the workspace Owner.',
+            };
+          }
+          if (supaInv.status === 'accepted') {
+            return {
+              valid: false,
+              error: 'This invitation has already been accepted. Please sign in to your account.',
+            };
+          }
+          if (new Date(supaInv.expires_at).getTime() < Date.now()) {
+            return {
+              valid: false,
+              error: 'This invitation has expired. Please ask the workspace Owner to send a new invitation.',
+            };
+          }
+          if (cleanEmail && supaInv.email.toLowerCase() !== cleanEmail) {
+            return {
+              valid: false,
+              error: `This invitation was issued to ${supaInv.email}, not ${cleanEmail}. Please use the matching email.`,
+            };
+          }
+          return {
+            valid: true,
+            invitation: {
+              email: supaInv.email,
+              role: supaInv.role as UserRole,
+              workspaceId: supaInv.workspace_id,
+              expiresAt: supaInv.expires_at,
+              status: supaInv.status,
+            },
+          };
+        }
+      } catch {
+        // Fall through
+      }
+    }
+
+    // 3. Local storage check for stored invitation
+    const localInvs = this.getStoredInvitationsUnsafe();
+    const foundByToken = cleanToken ? localInvs.find((i) => i.token === cleanToken) : null;
+    if (foundByToken) {
+      if (foundByToken.status === 'revoked') {
+        return {
+          valid: false,
+          error: 'Access Denied: This invitation has been revoked by the workspace Owner.',
+        };
+      }
+      if (foundByToken.status === 'accepted') {
+        return {
+          valid: false,
+          error: 'This invitation has already been accepted. Please sign in to your account.',
+        };
+      }
+      if (foundByToken.expiresAt && new Date(foundByToken.expiresAt).getTime() < Date.now()) {
+        return {
+          valid: false,
+          error: 'This invitation has expired. Please ask the workspace Owner to send a new invitation.',
+        };
+      }
+      if (cleanEmail && foundByToken.email.toLowerCase() !== cleanEmail) {
+        return {
+          valid: false,
+          error: `This invitation was issued to ${foundByToken.email}, not ${cleanEmail}. Please use the matching email.`,
+        };
+      }
+      return {
+        valid: true,
+        invitation: {
+          email: foundByToken.email,
+          role: foundByToken.role,
+          workspaceId: foundByToken.workspaceId,
+          expiresAt: foundByToken.expiresAt,
+          status: foundByToken.status,
+        },
+      };
+    }
+
+    // If an invitation exists for this email in local storage but the provided token didn't match:
+    if (cleanEmail) {
+      const foundByEmail = localInvs.find((i) => i.email.toLowerCase() === cleanEmail);
+      if (foundByEmail) {
+        if (foundByEmail.status === 'revoked') {
+          return {
+            valid: false,
+            error: 'Access Denied: This invitation has been revoked by the workspace Owner.',
+          };
+        }
+        if (foundByEmail.status === 'accepted') {
+          return {
+            valid: false,
+            error: 'This invitation has already been accepted. Please sign in to your account.',
+          };
+        }
+        return {
+          valid: false,
+          error: 'Invalid invitation token for this email address.',
+        };
+      }
+    }
+
+    // 4. Client-side cryptographically signed token verification
+    const verified = verifyClientInvitationToken(cleanToken, cleanEmail);
+    if (verified.valid) {
+      return {
+        valid: true,
+        invitation: {
+          email: cleanEmail || 'invited-member@example.com',
+          role: 'manager',
+          workspaceId: DEFAULT_WORKSPACE.id,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          status: 'pending',
+        },
+      };
+    }
+
+    return {
+      valid: false,
+      error: verified.reason || verified.error || 'Invalid or unrecognized invitation link. Please request a new invite from the owner.',
+    };
+  }
+
+  async acceptInvitation(params: {
+    token: string;
+    email?: string;
+    password?: string;
+    name?: string;
+  }): Promise<{
+    success: boolean;
+    user?: UserProfile;
+    error?: string;
+    requiresPassword?: boolean;
+  }> {
+    const { token, email, password, name } = params;
+    const cleanToken = (token || '').trim();
+    if (!cleanToken) {
+      return { success: false, error: 'Invitation token is missing.' };
+    }
+
+    // Validate the token and status
+    const validation = await this.validateInvitation(cleanToken, email);
+    if (!validation.valid || !validation.invitation) {
+      return { success: false, error: validation.error || 'Invalid or expired invitation.' };
+    }
+
+    const inv = validation.invitation;
+    const targetEmail = inv.email.toLowerCase();
+    const assignedRole: UserRole = inv.role || 'manager';
+    const assignedWorkspace: string = inv.workspaceId || DEFAULT_WORKSPACE.id;
+
+    const registeredUsers = this.getRegisteredUsers();
+    const existingUser = registeredUsers.find((u) => u.email.toLowerCase() === targetEmail);
+
+    // If new user: require password to complete setup
+    if (!existingUser) {
+      if (!password || password.trim().length < 6) {
+        return {
+          success: false,
+          requiresPassword: true,
+          error: 'Please choose a secure password of at least 6 characters to complete your account setup.',
+        };
+      }
+    } else {
+      // If existing user and password provided, verify password
+      if (password) {
+        const expectedHash = hashPasswordSync(password);
+        if (existingUser.passwordHash && existingUser.passwordHash !== expectedHash) {
+          return { success: false, error: 'Incorrect password. Please enter your existing account password to accept this invitation.' };
+        }
+      }
+    }
+
+    let uid = existingUser ? existingUser.id : `usr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const displayName =
+      (name || '').trim() ||
+      (existingUser
+        ? existingUser.name
+        : targetEmail.split('@')[0].charAt(0).toUpperCase() + targetEmail.split('@')[0].slice(1));
+
+    // 1. Supabase Auth and Profile
+    if (isSupabaseConfigured()) {
+      try {
+        if (!existingUser && password) {
+          const signUpRes = await supabaseSignUp(targetEmail, password, displayName, assignedRole);
+          if (signUpRes.user?.id) {
+            uid = signUpRes.user.id;
+          } else if (
+            signUpRes.error &&
+            (signUpRes.error.toLowerCase().includes('already registered') ||
+              signUpRes.error.toLowerCase().includes('already exists'))
+          ) {
+            const signInRes = await supabaseSignIn(targetEmail, password);
+            if (signInRes.success && signInRes.user?.id) {
+              uid = signInRes.user.id;
+            } else {
+              await supabaseUpdatePassword(password);
+            }
+          }
+        }
+        await supabaseUpsertProfile({
+          id: uid,
+          email: targetEmail,
+          name: displayName,
+          role: assignedRole,
+          workspaceId: assignedWorkspace,
+        });
+        await supabaseAcceptInvitation(cleanToken, uid, assignedWorkspace, assignedRole);
+      } catch (err: any) {
+        console.warn('Supabase invite acceptance warning:', err);
+      }
+    }
+
+    // 2. Firebase Auth if configured
+    if (isFirebaseConfigured() && !existingUser && password) {
+      try {
+        const auth = getFirebaseAuth();
+        if (auth) {
+          const userCred = await createUserWithEmailAndPassword(auth, targetEmail, password);
+          if (userCred.user && userCred.user.uid) {
+            uid = userCred.user.uid;
+          }
+        }
+      } catch {
+        // Fall through
+      }
+    }
+
+    // 3. Server API Route /api/auth/accept-invite
+    try {
+      if (typeof fetch !== 'undefined') {
+        await fetch('/api/auth/accept-invite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: cleanToken,
+            email: targetEmail,
+            name: displayName,
+            password: password || undefined,
+          }),
+        });
+      }
+    } catch {
+      // offline fallback
+    }
+
+    // 4. Update or Create Registered User
+    const nowIso = new Date().toISOString();
+    let updatedUsers: RegisteredUser[];
+    if (existingUser) {
+      const updated: RegisteredUser = {
+        ...existingUser,
+        role: assignedRole,
+        workspaceId: assignedWorkspace,
+        lastLoginAt: nowIso,
+      };
+      updatedUsers = registeredUsers.map((u) => (u.id === existingUser.id ? updated : u));
+    } else {
+      const newUser: RegisteredUser = {
+        id: uid,
+        name: displayName,
+        email: targetEmail,
+        passwordHash: hashPasswordSync(password!),
+        role: assignedRole,
+        status: 'active',
+        workspaceId: assignedWorkspace,
+        createdAt: nowIso,
+        lastLoginAt: nowIso,
+      };
+      updatedUsers = [...registeredUsers, newUser];
+    }
+    this.saveRegisteredUsers(updatedUsers);
+
+    // 5. Update Local Workspace Invitations to 'accepted'
+    const storedInvs = this.getStoredInvitationsUnsafe();
+    const updatedInvs = storedInvs.map((invitation) =>
+      invitation.token === cleanToken || invitation.email.toLowerCase() === targetEmail
+        ? { ...invitation, status: 'accepted' as const }
+        : invitation
+    );
+    this.setItem(STORAGE_KEYS.INVITATIONS, JSON.stringify(updatedInvs));
+    this.setItem(`atul_user_${INITIAL_OWNER.id}_invitations_v1`, JSON.stringify(updatedInvs));
+
+    // 6. Create or activate Workspace Member (only now upon acceptance!)
+    const members = this.getStoredMembersUnsafe();
+    const existingMemberIdx = members.findIndex((m) => m.email.toLowerCase() === targetEmail);
+    let updatedMembers: WorkspaceMember[];
+    if (existingMemberIdx >= 0) {
+      updatedMembers = members.map((m, idx) =>
+        idx === existingMemberIdx
+          ? { ...m, role: assignedRole, status: 'active' as const, workspaceId: assignedWorkspace }
+          : m
+      );
+    } else {
+      const newMember: WorkspaceMember = {
+        id: `mem-${Date.now()}`,
+        workspaceId: assignedWorkspace,
+        userId: uid,
+        name: displayName,
+        email: targetEmail,
+        role: assignedRole,
+        status: 'active',
+        joinedAt: nowIso,
+      };
+      updatedMembers = [...members, newMember];
+    }
+    this.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(updatedMembers));
+    this.setItem(`atul_user_${INITIAL_OWNER.id}_members_v1`, JSON.stringify(updatedMembers));
+    this.setItem(`atul_user_${uid}_members_v1`, JSON.stringify(updatedMembers));
+
+    // 7. Establish Authenticated Session
+    const userProfile: UserProfile = {
+      id: uid,
+      name: displayName,
+      email: targetEmail,
+      role: assignedRole,
+      status: 'active',
+      workspaceId: assignedWorkspace,
+      createdAt: existingUser ? existingUser.createdAt : nowIso,
+      lastLoginAt: nowIso,
+    };
+    this.currentUser = userProfile;
+    this.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(userProfile));
+    this.setItem('atul_expense_manager_current_user_v1', JSON.stringify(userProfile));
+
+    // 8. Audit Log
+    this.recordAuditLog({
+      action: 'Accepted Invitation',
+      recordType: 'invitation',
+      recordId: cleanToken,
+      previousValue: 'pending',
+      newValue: `${targetEmail} accepted invitation as ${assignedRole.toUpperCase()} (workspace: ${assignedWorkspace})`,
+    });
+
+    return {
+      success: true,
+      user: userProfile,
+    };
   }
 
   revokeUserAccess(userId: string): void {

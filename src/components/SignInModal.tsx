@@ -12,7 +12,7 @@ import {
 interface SignInModalProps {
   isOpen: boolean;
   onClose?: () => void;
-  onLoginWithCredentials: (email: string, password?: string) => Promise<{ success: boolean; user?: UserProfile; error?: string }> | { success: boolean; user?: UserProfile; error?: string };
+  onLoginWithCredentials: (email: string, password?: string) => Promise<{ success: boolean; user?: UserProfile; error?: string; hasPendingInvitation?: boolean }> | { success: boolean; user?: UserProfile; error?: string; hasPendingInvitation?: boolean };
   onNotify: (type: 'success' | 'warning' | 'info' | 'error', text: string) => void;
   isMandatory?: boolean;
 }
@@ -32,6 +32,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [hasPendingInvite, setHasPendingInvite] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
@@ -39,6 +40,7 @@ export const SignInModal: React.FC<SignInModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+    setHasPendingInvite(false);
 
     const cleanEmail = emailInput.trim();
     if (!cleanEmail) {
@@ -65,6 +67,9 @@ export const SignInModal: React.FC<SignInModalProps> = ({
           onClose();
         }
       } else {
+        if (res.hasPendingInvitation) {
+          setHasPendingInvite(true);
+        }
         setErrorMessage(
           res.error ||
             'Authentication failed. Please verify your email or contact the workspace Owner.'
@@ -118,9 +123,25 @@ export const SignInModal: React.FC<SignInModalProps> = ({
         {/* Body - Independently Scrollable */}
         <div className="p-6 space-y-4 flex-1 overflow-y-auto overscroll-contain focus:outline-none">
           {errorMessage && (
-            <div className="flex items-start gap-2.5 rounded-2xl bg-rose-50 p-3 text-xs text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-900">
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-              <span className="leading-relaxed">{errorMessage}</span>
+            <div className="flex flex-col gap-2 rounded-2xl bg-rose-50 p-3.5 text-xs text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-900">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span className="leading-relaxed">{errorMessage}</span>
+              </div>
+              {hasPendingInvite && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onClose) onClose();
+                    if (typeof window !== 'undefined') {
+                      window.location.href = `/?mode=invite&email=${encodeURIComponent(emailInput.trim())}`;
+                    }
+                  }}
+                  className="self-start inline-flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 px-3 py-1.5 text-[11px] font-bold text-white transition-all shadow-xs mt-1"
+                >
+                  <span>Accept Workspace Invitation & Set Password</span>
+                </button>
+              )}
             </div>
           )}
 
